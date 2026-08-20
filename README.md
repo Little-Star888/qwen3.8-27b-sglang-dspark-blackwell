@@ -23,7 +23,7 @@ That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
 | Draft | DSpark drafter (separate ~1.4 GB model, speculative decoding) |
 | Engine | SGLang (`lmsysorg/sglang:qwen38-27b`, prebuilt, no JIT) |
 | GPU | 1× RTX 5090 (32 GB, sm_120 / Blackwell) |
-| Target speed | ~180 tok/s (godspeed) / ~150–200 tok/s (vision) |
+| Target speed | up to ~323 tok/s measured burst (godspeed @ `medium` default) · ~150–200 tok/s (vision) |
 | Context | ~236k (text-only) / ~150k (vision) |
 | Ports | API 8040 · gateway 8041 · Grafana 8042 · Prometheus 127.0.0.1:9091 |
 
@@ -112,7 +112,7 @@ The served id is `qwen3.8-27b-nvfp4` (both presets pass
 | `--context-length` | 237568 | 150000 |
 | `--mem-fraction-static` | 0.985 | 0.88 |
 | `--speculative-dspark-block-size` | 7 | 5 |
-| Expected decode | ~180–260 tok/s | ~150–200 tok/s |
+| Expected decode | ~180 baseline, up to **~323 tok/s** measured burst @ `medium` (godspeed) | ~150–200 tok/s (vision) |
 | VRAM | ~31 GB | ~30 GB |
 
 Shared flags: `--kv-cache-dtype fp8_e4m3`, `--attention-backend flashinfer`
