@@ -39,7 +39,7 @@
       "type": "stat",
       "title": "Generation rate (tok/s)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 0,
         "y": 1
@@ -75,14 +75,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -91,7 +91,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:gen_throughput",
+          "expr": "sum(sglang:gen_throughput)",
           "legendFormat": "Generation rate (tok/s)",
           "refId": "A",
           "editorMode": "code"
@@ -102,7 +102,7 @@
       "type": "stat",
       "title": "Requests running",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 4,
         "y": 1
@@ -130,14 +130,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -146,7 +146,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:num_running_reqs",
+          "expr": "sum(sglang:num_running_reqs)",
           "legendFormat": "Requests running",
           "refId": "A",
           "editorMode": "code"
@@ -157,7 +157,7 @@
       "type": "stat",
       "title": "Requests waiting (queue)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 8,
         "y": 1
@@ -189,14 +189,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -205,7 +205,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:num_queue_reqs",
+          "expr": "sum(sglang:num_queue_reqs)",
           "legendFormat": "Requests waiting (queue)",
           "refId": "A",
           "editorMode": "code"
@@ -216,7 +216,7 @@
       "type": "stat",
       "title": "KV cache used tokens",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 12,
         "y": 1
@@ -244,14 +244,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -260,7 +260,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:kv_used_tokens",
+          "expr": "sum(sglang:kv_used_tokens)",
           "legendFormat": "KV cache used tokens",
           "refId": "A",
           "editorMode": "code"
@@ -271,7 +271,7 @@
       "type": "stat",
       "title": "Mamba/linear-attn usage",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 16,
         "y": 1
@@ -307,14 +307,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -323,8 +323,67 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sglang:mamba_used_tokens + sglang:mamba_evictable_tokens) / sglang:mamba_available_tokens",
+          "expr": "max(sglang:mamba_usage)",
           "legendFormat": "Mamba/linear-attn usage",
+          "refId": "A",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "GPU util %",
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "justifiedValue": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(DCGM_FI_DEV_GPU_UTIL)",
+          "legendFormat": "GPU util %",
           "refId": "A",
           "editorMode": "code"
         }
@@ -338,17 +397,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 4
       }
     },
     {
       "type": "stat",
       "title": "Drafts accepted / step",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 0,
-        "y": 6
+        "y": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -381,14 +440,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -397,7 +456,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_accept_length",
+          "expr": "sum(sglang:spec_accept_length)",
           "legendFormat": "Drafts accepted / step",
           "refId": "A",
           "editorMode": "code"
@@ -408,10 +467,10 @@
       "type": "stat",
       "title": "Accept rate (acc/proposed)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 4,
-        "y": 6
+        "y": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -444,14 +503,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -460,7 +519,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_accept_rate",
+          "expr": "sum(sglang:spec_accept_rate)",
           "legendFormat": "Accept rate (acc/proposed)",
           "refId": "A",
           "editorMode": "code"
@@ -471,10 +530,10 @@
       "type": "stat",
       "title": "Block accept length (uncapped)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 8,
-        "y": 6
+        "y": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -499,14 +558,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -515,7 +574,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_block_accept_length",
+          "expr": "sum(sglang:spec_block_accept_length)",
           "legendFormat": "Block accept length (uncapped)",
           "refId": "A",
           "editorMode": "code"
@@ -526,10 +585,10 @@
       "type": "stat",
       "title": "Active block size",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 12,
-        "y": 6
+        "y": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -554,14 +613,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -570,7 +629,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_num_steps",
+          "expr": "sum(sglang:spec_num_steps)",
           "legendFormat": "Active block size",
           "refId": "A",
           "editorMode": "code"
@@ -581,10 +640,10 @@
       "type": "stat",
       "title": "Spec verify calls (total)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 16,
-        "y": 6
+        "y": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -609,14 +668,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -625,8 +684,63 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_verify_calls_total",
+          "expr": "sum(sglang:spec_verify_calls_total)",
           "legendFormat": "Spec verify calls (total)",
+          "refId": "A",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Draft tokens (total)",
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "justifiedValue": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(sglang:spec_num_draft_tokens)",
+          "legendFormat": "Draft tokens (total)",
           "refId": "A",
           "editorMode": "code"
         }
@@ -636,10 +750,10 @@
       "type": "timeseries",
       "title": "Speculative decoding over time",
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 8
       },
       "datasource": {
         "type": "prometheus",
@@ -652,7 +766,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -664,14 +778,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -679,7 +797,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_accept_length",
+          "expr": "sum(sglang:spec_accept_length)",
           "legendFormat": "accept length (tok/step)",
           "refId": "A",
           "editorMode": "code"
@@ -689,7 +807,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_accept_rate * 100",
+          "expr": "sum(sglang:spec_accept_rate) * 100",
           "legendFormat": "accept rate %",
           "refId": "B",
           "editorMode": "code"
@@ -699,7 +817,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_block_accept_length",
+          "expr": "sum(sglang:spec_block_accept_length)",
           "legendFormat": "block accept length",
           "refId": "C",
           "editorMode": "code"
@@ -709,7 +827,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:spec_num_draft_tokens",
+          "expr": "sum(sglang:spec_num_draft_tokens)",
           "legendFormat": "draft tokens",
           "refId": "D",
           "editorMode": "code"
@@ -724,17 +842,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 14
       }
     },
     {
       "type": "timeseries",
       "title": "Time to first token (p50 / p95 / p99)",
       "gridPos": {
-        "h": 7,
-        "w": 24,
+        "h": 6,
+        "w": 8,
         "x": 0,
-        "y": 21
+        "y": 15
       },
       "datasource": {
         "type": "prometheus",
@@ -747,7 +865,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -759,14 +877,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -805,10 +927,10 @@
       "type": "timeseries",
       "title": "Inter-token latency (p50 / p95)",
       "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 28
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 15
       },
       "datasource": {
         "type": "prometheus",
@@ -821,7 +943,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -833,14 +955,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -869,10 +995,10 @@
       "type": "timeseries",
       "title": "E2E request latency (p50 / p95 / p99)",
       "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 35
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 15
       },
       "datasource": {
         "type": "prometheus",
@@ -885,7 +1011,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -897,14 +1023,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -947,17 +1077,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 21
       }
     },
     {
       "type": "timeseries",
       "title": "Token throughput (tok/s)",
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 22
       },
       "datasource": {
         "type": "prometheus",
@@ -970,7 +1100,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -982,14 +1112,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -997,19 +1131,9 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:gen_throughput",
+          "expr": "sum(sglang:gen_throughput)",
           "legendFormat": "gen tok/s",
           "refId": "A",
-          "editorMode": "code"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sglang:gen_throughput + sglang:gen_throughput * 0",
-          "legendFormat": "_",
-          "refId": "B",
           "editorMode": "code"
         }
       ]
@@ -1018,10 +1142,10 @@
       "type": "timeseries",
       "title": "Forward passes / queue (scheduler)",
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 22
       },
       "datasource": {
         "type": "prometheus",
@@ -1034,7 +1158,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1046,14 +1170,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1061,8 +1189,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(sglang:forward_execution_seconds_total[1m]) * 1000",
-          "legendFormat": "forward ms/step",
+          "expr": "sum(rate(sglang:cuda_graph_passes_total[5m]))",
+          "legendFormat": "CUDA-graph fwd passes /s",
           "refId": "A",
           "editorMode": "code"
         },
@@ -1071,7 +1199,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:num_queue_reqs",
+          "expr": "sum(sglang:num_queue_reqs)",
           "legendFormat": "queued reqs",
           "refId": "B",
           "editorMode": "code"
@@ -1082,10 +1210,10 @@
       "type": "timeseries",
       "title": "Tokens (input / generated, since start)",
       "gridPos": {
-        "h": 7,
-        "w": 24,
+        "h": 6,
+        "w": 12,
         "x": 0,
-        "y": 50
+        "y": 28
       },
       "datasource": {
         "type": "prometheus",
@@ -1098,7 +1226,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1110,14 +1238,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1125,7 +1257,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:prompt_tokens_total",
+          "expr": "sum(sglang:prompt_tokens_total)",
           "legendFormat": "input tokens",
           "refId": "A",
           "editorMode": "code"
@@ -1135,7 +1267,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:generation_tokens_total",
+          "expr": "sum(sglang:generation_tokens_total)",
           "legendFormat": "generated tokens",
           "refId": "B",
           "editorMode": "code"
@@ -1150,17 +1282,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 57
+        "y": 34
       }
     },
     {
       "type": "stat",
       "title": "KV token usage",
       "gridPos": {
-        "h": 4,
-        "w": 6,
+        "h": 3,
+        "w": 8,
         "x": 0,
-        "y": 58
+        "y": 35
       },
       "datasource": {
         "type": "prometheus",
@@ -1193,14 +1325,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1209,7 +1341,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sglang:kv_used_tokens + sglang:kv_evictable_tokens) / sglang:max_total_num_tokens",
+          "expr": "sum((sglang:kv_used_tokens + sglang:kv_evictable_tokens) / sglang:max_total_num_tokens)",
           "legendFormat": "KV token usage",
           "refId": "A",
           "editorMode": "code"
@@ -1220,10 +1352,10 @@
       "type": "stat",
       "title": "Prefix cache hit rate",
       "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 58
+        "h": 3,
+        "w": 8,
+        "x": 8,
+        "y": 35
       },
       "datasource": {
         "type": "prometheus",
@@ -1256,14 +1388,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1272,8 +1404,63 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:cache_hit_rate",
+          "expr": "sum(sglang:cache_hit_rate)",
           "legendFormat": "Prefix cache hit rate",
+          "refId": "A",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "KV evictable tokens",
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "justifiedValue": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(sglang:kv_evictable_tokens)",
+          "legendFormat": "KV evictable tokens",
           "refId": "A",
           "editorMode": "code"
         }
@@ -1283,10 +1470,10 @@
       "type": "timeseries",
       "title": "KV used / available tokens",
       "gridPos": {
-        "h": 7,
-        "w": 24,
+        "h": 6,
+        "w": 12,
         "x": 0,
-        "y": 65
+        "y": 38
       },
       "datasource": {
         "type": "prometheus",
@@ -1299,7 +1486,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1311,14 +1498,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1326,7 +1517,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:kv_used_tokens",
+          "expr": "sum(sglang:kv_used_tokens)",
           "legendFormat": "used",
           "refId": "A",
           "editorMode": "code"
@@ -1336,7 +1527,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:kv_available_tokens",
+          "expr": "sum(sglang:kv_available_tokens)",
           "legendFormat": "available",
           "refId": "B",
           "editorMode": "code"
@@ -1346,7 +1537,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:kv_evictable_tokens",
+          "expr": "sum(sglang:kv_evictable_tokens)",
           "legendFormat": "evictable",
           "refId": "C",
           "editorMode": "code"
@@ -1357,10 +1548,10 @@
       "type": "timeseries",
       "title": "Cached tokens & evictions (rate)",
       "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 72
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 38
       },
       "datasource": {
         "type": "prometheus",
@@ -1373,7 +1564,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1385,14 +1576,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1400,7 +1595,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(sglang:cached_tokens_total[5m])",
+          "expr": "sum(rate(sglang:cached_tokens_total[5m]))",
           "legendFormat": "cached tok/s",
           "refId": "A",
           "editorMode": "code"
@@ -1410,7 +1605,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(sglang:evicted_tokens_total[5m])",
+          "expr": "sum(rate(sglang:evicted_tokens_total[5m]))",
           "legendFormat": "evicted tok/s",
           "refId": "B",
           "editorMode": "code"
@@ -1425,17 +1620,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 44
       }
     },
     {
       "type": "stat",
       "title": "Requests (total)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 0,
-        "y": 80
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -1460,14 +1655,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1476,7 +1671,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sglang:num_requests_total",
+          "expr": "sum(sglang:num_requests_total)",
           "legendFormat": "Requests (total)",
           "refId": "A",
           "editorMode": "code"
@@ -1487,10 +1682,10 @@
       "type": "stat",
       "title": "Aborted (1h)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 6,
-        "y": 80
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -1519,14 +1714,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1535,7 +1730,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(sglang:num_aborted_requests_total[1h])",
+          "expr": "increase(sglang:num_aborted_requests_total[1h]) or vector(0)",
           "legendFormat": "Aborted (1h)",
           "refId": "A",
           "editorMode": "code"
@@ -1546,10 +1741,10 @@
       "type": "stat",
       "title": "Retracted (1h)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 12,
-        "y": 80
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -1578,14 +1773,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1594,7 +1789,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(sglang:num_retracted_reqs[1h])",
+          "expr": "sum(increase(sglang:num_retracted_reqs[1h])) or vector(0)",
           "legendFormat": "Retracted (1h)",
           "refId": "A",
           "editorMode": "code"
@@ -1603,12 +1798,12 @@
     },
     {
       "type": "stat",
-      "title": "Queue wait (1h)",
+      "title": "Queue wait p95 (5m)",
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 18,
-        "y": 80
+        "y": 45
       },
       "datasource": {
         "type": "prometheus",
@@ -1616,8 +1811,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0,
+          "unit": "s",
+          "decimals": 3,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -1633,14 +1828,14 @@
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ]
         },
-        "textMode": "auto",
+        "textMode": "value",
         "justifiedValue": true
       },
       "targets": [
@@ -1649,8 +1844,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(sglang:num_grammar_timeout_total[1h]) or 0",
-          "legendFormat": "Queue wait (1h)",
+          "expr": "histogram_quantile(0.95, sum(rate(sglang:queue_time_seconds_bucket[5m])) by (le))",
+          "legendFormat": "Queue wait p95 (5m)",
           "refId": "A",
           "editorMode": "code"
         }
@@ -1660,10 +1855,10 @@
       "type": "timeseries",
       "title": "Request rate (finished / aborted)",
       "gridPos": {
-        "h": 7,
+        "h": 6,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -1676,7 +1871,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1688,14 +1883,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1703,7 +1902,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(sglang:num_requests_total[1m])",
+          "expr": "sum(rate(sglang:num_requests_total[1m]))",
           "legendFormat": "finished rps",
           "refId": "A",
           "editorMode": "code"
@@ -1713,7 +1912,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(sglang:num_aborted_requests_total[1m])",
+          "expr": "sum(rate(sglang:num_aborted_requests_total[1m])) or vector(0)",
           "legendFormat": "aborted rps",
           "refId": "B",
           "editorMode": "code"
@@ -1728,17 +1927,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 94
+        "y": 54
       }
     },
     {
       "type": "timeseries",
       "title": "GPU utilization (DCGM)",
       "gridPos": {
-        "h": 7,
-        "w": 12,
+        "h": 5,
+        "w": 6,
         "x": 0,
-        "y": 95
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1751,7 +1950,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1763,14 +1962,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1789,10 +1992,10 @@
       "type": "timeseries",
       "title": "GPU memory (MiB)",
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 95
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1805,7 +2008,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1817,14 +2020,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1853,10 +2060,10 @@
       "type": "timeseries",
       "title": "GPU power (W)",
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 102
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1869,7 +2076,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1881,14 +2088,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1907,10 +2118,10 @@
       "type": "timeseries",
       "title": "GPU temperature (C)",
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 102
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1923,7 +2134,7 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "spanNulls": false,
             "showPoints": "never",
             "stacking": {
@@ -1935,14 +2146,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right"
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
-        },
-        "showLegend": true
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -1965,17 +2180,17 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 60
       },
       "panels": [
         {
           "type": "stat",
-          "title": "Weight load time (s)",
+          "title": "CUDA graph build (s)",
           "gridPos": {
-            "h": 4,
+            "h": 3,
             "w": 4,
             "x": 0,
-            "y": 110
+            "y": 61
           },
           "datasource": {
             "type": "prometheus",
@@ -2000,14 +2215,14 @@
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
               ]
             },
-            "textMode": "auto",
+            "textMode": "value",
             "justifiedValue": true
           },
           "targets": [
@@ -2016,8 +2231,8 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sglang:weight_load_duration_seconds",
-              "legendFormat": "Weight load time (s)",
+              "expr": "sum(sglang:startup_cuda_graph_time_seconds)",
+              "legendFormat": "CUDA graph build (s)",
               "refId": "A",
               "editorMode": "code"
             }
@@ -2027,10 +2242,10 @@
           "type": "stat",
           "title": "Weight VRAM (GB)",
           "gridPos": {
-            "h": 4,
+            "h": 3,
             "w": 4,
             "x": 4,
-            "y": 110
+            "y": 61
           },
           "datasource": {
             "type": "prometheus",
@@ -2055,14 +2270,14 @@
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
               ]
             },
-            "textMode": "auto",
+            "textMode": "value",
             "justifiedValue": true
           },
           "targets": [
@@ -2071,7 +2286,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sglang:weight_memory_usage_gb",
+              "expr": "max(sglang:weight_memory_usage_gb)",
               "legendFormat": "Weight VRAM (GB)",
               "refId": "A",
               "editorMode": "code"
@@ -2082,10 +2297,10 @@
           "type": "stat",
           "title": "KV cache VRAM (GB)",
           "gridPos": {
-            "h": 4,
+            "h": 3,
             "w": 4,
             "x": 8,
-            "y": 110
+            "y": 61
           },
           "datasource": {
             "type": "prometheus",
@@ -2110,14 +2325,14 @@
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
               ]
             },
-            "textMode": "auto",
+            "textMode": "value",
             "justifiedValue": true
           },
           "targets": [
@@ -2126,7 +2341,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sglang:kv_cache_memory_usage_gb",
+              "expr": "max(sglang:kv_cache_memory_usage_gb)",
               "legendFormat": "KV cache VRAM (GB)",
               "refId": "A",
               "editorMode": "code"
@@ -2137,10 +2352,10 @@
           "type": "stat",
           "title": "Startup time (s)",
           "gridPos": {
-            "h": 4,
+            "h": 3,
             "w": 4,
             "x": 12,
-            "y": 110
+            "y": 61
           },
           "datasource": {
             "type": "prometheus",
@@ -2165,14 +2380,14 @@
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
               ]
             },
-            "textMode": "auto",
+            "textMode": "value",
             "justifiedValue": true
           },
           "targets": [
@@ -2181,7 +2396,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sglang:startup_time_seconds",
+              "expr": "sum(sglang:startup_time_seconds)",
               "legendFormat": "Startup time (s)",
               "refId": "A",
               "editorMode": "code"

@@ -76,8 +76,12 @@ Both presets free the GPU first (stop any other container using it). Add
 curl -s http://localhost:8040/v1/models
 curl -s http://localhost:8040/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hello"}]}'
+  -d '{"model":"qwen3.8-27b-nvfp4","messages":[{"role":"user","content":"hello"}]}'
 ```
+
+The served id is `qwen3.8-27b-nvfp4` (both presets pass
+`--served-model-name`, so `/v1/models` no longer leaks the container path
+`/model`). Override it per-stack via `SERVED_MODEL_NAME` in `.env`.
 
 ---
 
@@ -117,6 +121,31 @@ Dashboard: `http://localhost:8042` → folder *sglang* → "SGLang — Qwen3.8-2
 (DSpark, RTX5090)". Watch `spec_accept_length` / `spec_accept_rate` to see the
 drafter win-rate that drives your throughput.
 
+### Live proof (measured via the dashboard's own data source)
+
+Every value below was read through the same Prometheus (port 9091) the
+Grafana panels query, on 2026-08-20 20:11 CEST with `sglang-qwen38` up
+33 min on the godspeed preset, idle after a few smoke-test requests:
+
+| KPI (Grafana tile) | Query the tile runs | Measured |
+|---|---|---|
+| Peak generation rate (1h) | `max(sglang:gen_throughput)` | **229.6 tok/s** |
+| Drafts accepted / step | `sum(sglang:spec_accept_length)` | 3.9 (peak 5.65 in 1h) |
+| Accept rate (acc/proposed) | `sum(sglang:spec_accept_rate)` | 0.414 (peak 0.664 in 1h) |
+| Requests (total) | `sum(sglang:num_requests_total)` | 108 |
+| Input / generated tokens | `sum(sglang:prompt_tokens_total)` / `…generation_tokens_total` | 5,385,090 / 202,159 |
+| TTFT p50 / p95 (1h) | `histogram_quantile(…, sglang:time_to_first_token_seconds_bucket[1h])` | 0.41 s / 1.78 s |
+| Startup time (total) | `sum(sglang:startup_time_seconds)` | 77.5 s (incl. 11.4 s CUDA-graph build) |
+| Weight VRAM | `max(sglang:weight_memory_usage_gb)` | 16.7 GB |
+| KV cache VRAM | `max(sglang:kv_cache_memory_usage_gb)` | 5.0 GB |
+| GPU util / temp / power | DCGM `max(…)` | 97% (peak 100%) / 74 °C / 432 W |
+| GPU memory | DCGM `max(…)` | 31,212 / 32,607 MiB (95.9%) |
+
+Note the `sum()` / `max()` wrappers: this SGLang build exports several
+metrics with multiple label sets (`is_streaming`, `mode`, `phase` — and one
+per historical `model_name`), so the dashboard always aggregates before
+displaying; a raw gauge would otherwise stack one value per series.
+
 ---
 
 ## Configuration (`.env`)
@@ -124,7 +153,9 @@ drafter win-rate that drives your throughput.
 Everything is overridable in `.env` — no user-specific paths or usernames are
 hardcoded. Common knobs: `SGGLANG_IMAGE`, `MODEL_REPO`/`DRAFTER_REPO`,
 `MODEL_SUBDIR`/`DRAFTER_SUBDIR`, `HOST_PORT`, `API_KEY`, `MODELS_ROOT`,
-`HF_HUB_ACCESS_TOKEN`, `METRICS_HASH` (gateway auth). See `.env.example`.
+`SERVED_MODEL_NAME` (id exposed at `/v1/models`; default
+`qwen3.8-27b-nvfp4`), `HF_HUB_ACCESS_TOKEN`, `METRICS_HASH` (gateway auth).
+See `.env.example`.
 
 ---
 
@@ -153,6 +184,9 @@ sglang/
 ├── caddy/Caddyfile            # Basic-auth gateway on 8041
 ├── prometheus/prometheus.yml  # scrapes the SGLang server + GPU exporter
 ├── grafana/                   # auto-provisioned datasource + dashboard
+│   ├── dashboards/sglang-qwen38-27b.json   # BUILD OUTPUT — do not hand-edit
+│   └── provisioning/          # dashboard file-provider (syncs ~30 s) + datasource
+├── make_dashboard.py          # dashboard generator (run: python3 make_dashboard.py)
 ├── dcgm-exporter/            # NVML -> Prometheus GPU exporter
 └── models/                    # weights (created by setup.sh; gitignored)
 ```
