@@ -13,7 +13,6 @@
 #   ./run-sglang-godspeed.sh stop
 #   ./run-sglang-godspeed.sh logs
 #   ./run-sglang-godspeed.sh status
-#   KEEP_GPU=1 ./run-sglang-godspeed.sh start   # don't free the GPU
 #
 # API (OpenAI-compatible):  http://localhost:${HOST_PORT}/v1
 # (Also Anthropic-compatible: /anthropic.)
@@ -37,11 +36,6 @@ SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
 #   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
 DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 [ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
-# Optional: path to the vLLM compose dir (its docker-compose.yml) so we can stop
-# the whole vLLM project cleanly. Its containers use `restart: always`, so a
-# plain `podman stop` gets undone; `podman-compose down` removes them for good
-# (no -v, so its monitoring data volumes are preserved).
-VLLM_COMPOSE_DIR="${VLLM_COMPOSE_DIR:-}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
 DRAFTER_HOST="$DIR/models/$DRAFTER_SUBDIR"
@@ -58,28 +52,14 @@ start() {
   podman image exists "$SGGLANG_IMAGE" || {
     echo "ERROR: image $SGGLANG_IMAGE missing — run: podman pull $SGGLANG_IMAGE"; exit 1; }
 
-  if [ "${KEEP_GPU:-0}" != "1" ]; then
-    if [ -n "$VLLM_COMPOSE_DIR" ] && [ -f "$VLLM_COMPOSE_DIR/docker-compose.yml" ]; then
-      echo "[gpu] stopping the whole vLLM compose project in $VLLM_COMPOSE_DIR (no -v)"
-      ( cd "$VLLM_COMPOSE_DIR" && podman-compose -f docker-compose.yml down 2>/dev/null || true )
-    else
-      echo "[gpu] freeing GPU: stopping any running sglang/vllm/llama containers that own the 5090 ..."
-      for c in sglang-qwen38 vllm-qwen38 qwen38-vllm; do
-        if podman ps -q -f name="$c" 2>/dev/null | grep -q .; then
-          echo "  [gpu] stopping $c"; podman stop "$c" >/dev/null 2>&1 || true
-        fi
-      done
-      echo "  [gpu] TIP: set VLLM_COMPOSE_DIR=/path/to/vllm-compose in .env for a clean stop"
-      echo "        (vLLM's restart:always makes plain 'podman stop' get undone)."
-    fi
-    sleep 3
-  fi
-
+  # GPU check (read-only): the launcher never stops or kills other containers
+  # or services — if the 5090 is still busy (e.g. a vLLM stack), free it
+  # manually before launching.
   local memfree
   memfree=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
   echo "[gpu] free MiB: ${memfree:-?}"
   if [ -n "${memfree:-}" ] && [ "$memfree" -lt 20000 ] 2>/dev/null; then
-    echo "WARNING: only ${memfree} MiB free — SGLang needs ~30 GB on the 5090. Free the GPU or use KEEP_GPU=1."
+    echo "WARNING: only ${memfree} MiB free — SGLang needs ~30 GB on the 5090. Free the GPU manually first."
   fi
 
   echo "Starting SGLang (godspeed, text-only) -> http://localhost:${HOST_PORT}/v1"
@@ -150,5 +130,5 @@ case "${1:-start}" in
   stop)  stop ;;
   logs)  logs ;;
   status) status ;;
-  *) echo "usage: $0 [start|stop|logs|status]  (KEEP_GPU=1 to not free the GPU)"; exit 2 ;;
+  *) echo "usage: $0 [start|stop|logs|status]"; exit 2 ;;
 esac

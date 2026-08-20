@@ -44,8 +44,7 @@ This repo exposes those numbers live in the Grafana dashboard.
 | 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`127.0.0.1:9091`, local-only) |
 | 🎛️ GPU telemetry | DCGM exporter (util / mem / temp / power) alongside `sglang:` engine metrics; every tile aggregated (`sum()`/`max()`) to a single value |
 | 🔐 Gateway | Caddy **Basic-auth** on 8041 → OpenAI/Anthropic endpoints with bearer `API_KEY`; auth-off by default |
-| 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); presets free the GPU before boot |
-| 🔁 vLLM switch | `VLLM_COMPOSE_DIR` cleanly `down`s a competing vLLM compose (`restart: always`-safe GPU handover) |
+| 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); boot does a read-only VRAM check — it never stops other services |
 | 🏷️ Stable API id | `qwen3.8-27b-nvfp4` via `--served-model-name` (overridable in `.env`), so `/v1/models` never leaks the `/model` path |
 | 🧠 Thinking control | Qwen3.8 thinking/reasoning knobs via SGLang `--default-chat-template-kwargs`: `reasoning_effort` (medium default / xhigh / low), `enable_thinking`, `preserve_thinking` — set in `.env` as `DEFAULT_CHAT_TEMPLATE_KWARGS` |
 | 📦 Self-contained | One `./setup.sh` (image + target + drafter weights → `./models`); share across stacks via `MODELS_ROOT` |
@@ -85,9 +84,10 @@ multiple stacks, set `MODELS_ROOT` in `.env` and `setup.sh` symlinks into it.
 ./run-sglang-godspeed.sh status     # wait until "HTTP 200 (ready)"
 ```
 
-Both presets free the GPU first (stop any other container using it). Add
-`KEEP_GPU=1` to skip that. Swap presets by `stop`-ing one, `start`-ing the other
-— you only have one GPU, so they're **swappable, not simultaneous**.
+Start does a read-only VRAM check and never stops other containers or services —
+if the 5090 is busy (e.g. a vLLM stack), free it manually first. Swap presets by
+`stop`-ing one, `start`-ing the other — you only have one GPU, so they're
+**swappable, not simultaneous**.
 
 ## 3 · Call it
 
