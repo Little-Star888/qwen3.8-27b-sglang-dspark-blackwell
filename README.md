@@ -47,7 +47,7 @@ This repo exposes those numbers live in the Grafana dashboard.
 | 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); presets free the GPU before boot |
 | 🔁 vLLM switch | `VLLM_COMPOSE_DIR` cleanly `down`s a competing vLLM compose (`restart: always`-safe GPU handover) |
 | 🏷️ Stable API id | `qwen3.8-27b-nvfp4` via `--served-model-name` (overridable in `.env`), so `/v1/models` never leaks the `/model` path |
-| 🧠 Thinking control | Qwen3.8 thinking/reasoning knobs via SGLang `--default-chat-template-kwargs`: `reasoning_effort` (xhigh/medium/low), `enable_thinking`, `preserve_thinking` — set in `.env` as `DEFAULT_CHAT_TEMPLATE_KWARGS` |
+| 🧠 Thinking control | Qwen3.8 thinking/reasoning knobs via SGLang `--default-chat-template-kwargs`: `reasoning_effort` (medium default / xhigh / low), `enable_thinking`, `preserve_thinking` — set in `.env` as `DEFAULT_CHAT_TEMPLATE_KWARGS` |
 | 📦 Self-contained | One `./setup.sh` (image + target + drafter weights → `./models`); share across stacks via `MODELS_ROOT` |
 
 ---
@@ -134,21 +134,24 @@ API call still overrides the server default):
 
 | knob | values | default | effect |
 |---|---|---|---|
-| `reasoning_effort` | `xhigh` (default) / `medium` / `low` | `xhigh` | how deeply the model reasons before answering. `medium` balances accuracy vs speed; `low` is fastest/cheapest. (The template rejects any other string; "none"/"off" = set `enable_thinking=false`.) |
+| `reasoning_effort` | `medium` (default) / `xhigh` / `low` | `medium` | how deeply the model reasons before answering. `xhigh` is the deepest; `low` is fastest/cheapest. (The template rejects any other string; "none"/"off" = set `enable_thinking=false`.) |
 | `enable_thinking` | `true` / `false` | `true` | turn the thinking trace on/off entirely (off = no `reasoning_content`, 0 reasoning tokens). |
 | `preserve_thinking` | `true` / `false` | `true` | keep the previous turn's thinking trace in the prompt (costs tokens, helps continued conversations). |
 
 **Where it's set:** the launch scripts build `--default-chat-template-kwargs
-"$DEFAULT_CHAT_TEMPLATE_KWARGS"`. That variable is `.env`-overridable and
-defaults to `{"reasoning_effort":"xhigh"}` when unset (behavior-preserving).
+"$DEFAULT_CHAT_TEMPLATE_KWARGS"`. That variable is `.env`-overridable; when
+unset the launchers pass `{"reasoning_effort":"medium"}`, so **medium is the
+default reasoning effort for this stack** (a good accuracy/speed balance for
+day-to-day use). The template's own native default is `xhigh`; medium is
+deliberately chosen here as the out-of-the-box trade-off.
 
-To run medium by default, add to `.env`:
+> **Hint — pick your effort.** Leave it alone for `medium`. Want a deeper
+> answer on hard tasks? Set `DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'`
+> in `.env`. Want it faster/cheaper? `"reasoning_effort":"low"` (or
+> `"enable_thinking":false` to skip the trace entirely). Or override per-request
+> with no restart — see below.
 
-```bash
-DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
-```
-
-Other examples:
+Other `.env` examples:
 
 ```bash
 # thinking off entirely (cheapest, no reasoning trace)
@@ -157,13 +160,14 @@ DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
 DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"low","preserve_thinking":true}'
 ```
 
-Or leave the server default alone and set it per-request (no restart):
+Or override per-request (no restart) — a per-request `chat_template_kwargs`
+wins over the server default:
 
 ```bash
 curl -s http://localhost:8040/v1/chat/completions \
   -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
   -d '{"model":"qwen3.8-27b-nvfp4","messages":[{"role":"user","content":"hi"}],
-       "chat_template_kwargs":{"reasoning_effort":"medium"}}'
+       "chat_template_kwargs":{"reasoning_effort":"xhigh"}}'
 ```
 
 ---
@@ -216,8 +220,9 @@ Everything is overridable in `.env` — no user-specific paths or usernames are
 hardcoded. Common knobs: `SGGLANG_IMAGE`, `MODEL_REPO`/`DRAFTER_REPO`,
 `MODEL_SUBDIR`/`DRAFTER_SUBDIR`, `HOST_PORT`, `API_KEY`, `MODELS_ROOT`,
 `SERVED_MODEL_NAME` (id exposed at `/v1/models`; default
-`qwen3.8-27b-nvfp4`), `HF_HUB_ACCESS_TOKEN`, `METRICS_HASH` (gateway auth).
-See `.env.example`.
+`qwen3.8-27b-nvfp4`), `DEFAULT_CHAT_TEMPLATE_KWARGS` (Qwen3.8 thinking knobs;
+default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
+`METRICS_HASH` (gateway auth). See `.env.example`.
 
 ---
 
@@ -252,3 +257,11 @@ sglang/
 ├── dcgm-exporter/            # NVML -> Prometheus GPU exporter
 └── models/                    # weights (created by setup.sh; gitignored)
 ```
+
+---
+
+## Credit
+
+Made with **AI — Qwen3.8** (the model this stack serves). Qwen3.8 drove the
+SGLang tuning, chat-template work, Grafana dashboard, and monitoring
+throughout; the Qwen3.8-27B checkpoint itself runs on this exact setup.

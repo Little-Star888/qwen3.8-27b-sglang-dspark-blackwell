@@ -32,11 +32,11 @@ DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
 API_KEY="${API_KEY:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
 # Qwen3.8 chat-template knobs (JSON): reasoning_effort xhigh/medium/low,
-# enable_thinking, preserve_thinking. Unset -> behavior-preserving default
-# (thinking on, preserved, reasoning_effort xhigh). Override in .env, e.g.
-#   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
+# enable_thinking, preserve_thinking. Unset -> default reasoning_effort
+# medium (balances accuracy and speed). Override in .env, e.g.
+#   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
 DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
-[ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
+[ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
 # Optional: path to the vLLM compose dir (its docker-compose.yml) so we can stop
 # the whole vLLM project cleanly. Its containers use `restart: always`, so a
 # plain `podman stop` gets undone; `podman-compose down` removes them for good

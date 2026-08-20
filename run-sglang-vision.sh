@@ -30,11 +30,11 @@ DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
 API_KEY="${API_KEY:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
 # Qwen3.8 chat-template knobs (JSON): reasoning_effort xhigh/medium/low,
-# enable_thinking, preserve_thinking. Unset -> behavior-preserving default
-# (thinking on, preserved, reasoning_effort xhigh). Override in .env, e.g.
-#   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
+# enable_thinking, preserve_thinking. Unset -> default reasoning_effort
+# medium (balances accuracy and speed). Override in .env, e.g.
+#   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
 DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
-[ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
+[ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
 VLLM_COMPOSE_DIR="${VLLM_COMPOSE_DIR:-}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
