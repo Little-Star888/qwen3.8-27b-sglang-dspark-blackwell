@@ -33,6 +33,24 @@ This repo exposes those numbers live in the Grafana dashboard.
 
 ---
 
+## Feature overview
+
+| | |
+|---|---|
+| ⚡ Inference | Prebuilt SGLang image — boots with **no JIT/compile**; NVFP4 weights + FP8 KV cache, Blackwell SM120 FlashInfer FP4 GEMM |
+| 🎲 Speculative decoding | DSpark drafter proposes a block of draft tokens; the 27B model **verifies the whole block in one step** (block 7 godspeed / 5 vision) |
+| 👁️ Two presets | **godspeed** (text-only, 236k ctx) ⇄ **vision** (tower on, 150k ctx) — swappable on one GPU |
+| 📊 Grafana | Auto-provisioned dashboard: dense KPI tiles + a live **DSpark win-rate** section. `make_dashboard.py` is the source; the JSON is build output |
+| 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`127.0.0.1:9091`, local-only) |
+| 🎛️ GPU telemetry | DCGM exporter (util / mem / temp / power) alongside `sglang:` engine metrics; every tile aggregated (`sum()`/`max()`) to a single value |
+| 🔐 Gateway | Caddy **Basic-auth** on 8041 → OpenAI/Anthropic endpoints with bearer `API_KEY`; auth-off by default |
+| 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); presets free the GPU before boot |
+| 🔁 vLLM switch | `VLLM_COMPOSE_DIR` cleanly `down`s a competing vLLM compose (`restart: always`-safe GPU handover) |
+| 🏷️ Stable API id | `qwen3.8-27b-nvfp4` via `--served-model-name` (overridable in `.env`), so `/v1/models` never leaks the `/model` path |
+| 📦 Self-contained | One `./setup.sh` (image + target + drafter weights → `./models`); share across stacks via `MODELS_ROOT` |
+
+---
+
 ## Requirements
 
 - **Linux x86_64**, one RTX 5090, NVIDIA driver ≥ 580 (Blackwell).
