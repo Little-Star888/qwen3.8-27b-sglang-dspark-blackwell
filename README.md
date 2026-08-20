@@ -47,6 +47,7 @@ This repo exposes those numbers live in the Grafana dashboard.
 | 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); presets free the GPU before boot |
 | 🔁 vLLM switch | `VLLM_COMPOSE_DIR` cleanly `down`s a competing vLLM compose (`restart: always`-safe GPU handover) |
 | 🏷️ Stable API id | `qwen3.8-27b-nvfp4` via `--served-model-name` (overridable in `.env`), so `/v1/models` never leaks the `/model` path |
+| 🧠 Thinking control | Qwen3.8 thinking/reasoning knobs via SGLang `--default-chat-template-kwargs`: `reasoning_effort` (xhigh/medium/low), `enable_thinking`, `preserve_thinking` — set in `.env` as `DEFAULT_CHAT_TEMPLATE_KWARGS` |
 | 📦 Self-contained | One `./setup.sh` (image + target + drafter weights → `./models`); share across stacks via `MODELS_ROOT` |
 
 ---
@@ -121,6 +122,49 @@ Shared flags: `--kv-cache-dtype fp8_e4m3`, `--attention-backend flashinfer`
 **Why text-only is faster** (weights are identical): the gap is DSpark
 `block-size` 7 vs 5 — bigger accepted draft blocks per verify step — plus 98.5%
 VRAM. Lowering ctx is just the cost of fitting the vision tower, not a speed cause.
+
+---
+
+## Thinking / reasoning (Qwen3.8)
+
+Qwen3.8-27B is a thinking model. The chat template exposes three knobs, all
+passed to the server as SGLang's `--default-chat-template-kwargs` (a JSON
+object applied to every request; a per-request `chat_template_kwargs` in the
+API call still overrides the server default):
+
+| knob | values | default | effect |
+|---|---|---|---|
+| `reasoning_effort` | `xhigh` (default) / `medium` / `low` | `xhigh` | how deeply the model reasons before answering. `medium` balances accuracy vs speed; `low` is fastest/cheapest. (The template rejects any other string; "none"/"off" = set `enable_thinking=false`.) |
+| `enable_thinking` | `true` / `false` | `true` | turn the thinking trace on/off entirely (off = no `reasoning_content`, 0 reasoning tokens). |
+| `preserve_thinking` | `true` / `false` | `true` | keep the previous turn's thinking trace in the prompt (costs tokens, helps continued conversations). |
+
+**Where it's set:** the launch scripts build `--default-chat-template-kwargs
+"$DEFAULT_CHAT_TEMPLATE_KWARGS"`. That variable is `.env`-overridable and
+defaults to `{"reasoning_effort":"xhigh"}` when unset (behavior-preserving).
+
+To run medium by default, add to `.env`:
+
+```bash
+DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
+```
+
+Other examples:
+
+```bash
+# thinking off entirely (cheapest, no reasoning trace)
+DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
+# fast + keep prior-turn thinking for ongoing chats
+DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"low","preserve_thinking":true}'
+```
+
+Or leave the server default alone and set it per-request (no restart):
+
+```bash
+curl -s http://localhost:8040/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-27b-nvfp4","messages":[{"role":"user","content":"hi"}],
+       "chat_template_kwargs":{"reasoning_effort":"medium"}}'
+```
 
 ---
 

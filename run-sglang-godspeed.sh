@@ -31,6 +31,12 @@ MODEL_SUBDIR="${MODEL_SUBDIR:-Qwen3.8-27B-NVFP4-RTX5090-LMHead4}"
 DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
 API_KEY="${API_KEY:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
+# Qwen3.8 chat-template knobs (JSON): reasoning_effort xhigh/medium/low,
+# enable_thinking, preserve_thinking. Unset -> behavior-preserving default
+# (thinking on, preserved, reasoning_effort xhigh). Override in .env, e.g.
+#   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
+DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
+[ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
 # Optional: path to the vLLM compose dir (its docker-compose.yml) so we can stop
 # the whole vLLM project cleanly. Its containers use `restart: always`, so a
 # plain `podman stop` gets undone; `podman-compose down` removes them for good
@@ -118,6 +124,7 @@ start() {
       --speculative-dspark-block-size 7 \
       --speculative-draft-model-quantization modelopt_fp4 \
       --reasoning-parser qwen3 \
+      --default-chat-template-kwargs "$DEFAULT_CHAT_TEMPLATE_KWARGS" \
       --tool-call-parser qwen3_coder \
       --mm-feature-transport cpu \
       --language-only \
