@@ -1,0 +1,37 @@
+# Prometheus config for the SGLang monitor stack (mounted into the `prometheus`
+# service). Both targets are scraped directly on the sglang_monitor network —
+# no auth there:
+#   sglang-qwen38:30000  (SGLang engine + spec-decode metrics, /metrics)
+#   dcgm-sglang:9400     (per-GPU: utilization, memory, power, temps)
+# The SGLang container joins sglang_monitor via `--network sglang_monitor` in the
+# run scripts; the authenticated public face is the caddy gateway on 8041.
+#
+# The Prometheus UI is bound to 127.0.0.1:9091 only (see docker-compose.yml).
+# Access it locally or via an SSH tunnel.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  # SGLang server (engine + DSpark spec-decode telemetry).
+  # Requires --enable-metrics on the SGLang launch (added in the run scripts).
+  - job_name: sglang
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - sglang-qwen38:30000
+        labels:
+          model: qwen3.8-27b
+          engine: sglang
+
+  # Per-GPU metrics (DCGM: utilization, memory, power, temps).
+  - job_name: dcgm
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - dcgm-sglang:9400

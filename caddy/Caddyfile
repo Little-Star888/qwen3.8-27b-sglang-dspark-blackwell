@@ -1,0 +1,52 @@
+# Public gateway for the SGLang server, host port 8041.
+#
+# The SGLang API is served directly on host port 8040 (the run-sglang container;
+# bearer auth via API_KEY). This gateway is the optional, externally-exposable
+# front: HTTP Basic auth (translated into the SGLang bearer token) plus metrics.
+# Only three paths are routed — everything else falls through to caddy's empty
+# default response.
+# All routed paths require HTTP Basic auth (METRICS_USER / METRICS_HASH from
+# .env; caddy fails closed if METRICS_HASH is unset):
+#   /v1, /v1/*   -> SGLang (basic auth -> SGLang bearer token, API_KEY upstream)
+#   /metrics      -> SGLang /metrics (telemetry)
+#   /dcgm/*       -> dcgm-sglang /metrics (per-GPU, prefix stripped)
+#
+# Note (caddy 2.11): `header_up` was renamed to `request_header`; `realm` is not
+# supported in basic_auth here (the line would be misparsed as user/pass).
+{
+	admin off
+}
+
+:8030 {
+	@v1 {
+		path /v1 /v1/*
+	}
+	@metrics {
+		path /metrics
+	}
+	@dcgm {
+		path /dcgm/*
+	}
+	handle @v1 {
+		basic_auth {
+			{$METRICS_USER} {$METRICS_HASH}
+		}
+		# If API_KEY is empty (auth disabled upstream), this becomes
+		# "Authorization: *** " — SGLang ignores it when running keyless.
+		request_header Authorization "Bearer {$VLLM_API_KEY}"
+		reverse_proxy sglang-qwen38:30000
+	}
+	handle @metrics {
+		basic_auth {
+			{$METRICS_USER} {$METRICS_HASH}
+		}
+		reverse_proxy sglang-qwen38:30000
+	}
+	handle @dcgm {
+		basic_auth {
+			{$METRICS_USER} {$METRICS_HASH}
+		}
+		uri strip_prefix /dcgm
+		reverse_proxy dcgm-sglang:9400
+	}
+}

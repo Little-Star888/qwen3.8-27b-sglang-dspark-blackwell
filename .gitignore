@@ -1,0 +1,9 @@
+# weights (local-only, downloaded by setup.sh)
+models/
+
+# per-host secrets / config
+.env
+!.env.example
+
+# logs
+*.log
