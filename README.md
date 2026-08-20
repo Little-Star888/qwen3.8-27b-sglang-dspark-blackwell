@@ -151,6 +151,16 @@ deliberately chosen here as the out-of-the-box trade-off.
 > `"enable_thinking":false` to skip the trace entirely). Or override per-request
 > with no restart — see below.
 
+> **Measured at medium (the default).** With `reasoning_effort: medium` this
+> stack peaks at **323 tok/s** on a live burst. The DSpark drafter is still
+> what drives it — the live Prometheus source shows the drafter accepting ~3.3
+> draft tokens/step at a ~0.33 accept rate (the same `spec_accept_*` series the
+> dashboard's DSpark section graphs). So the out-of-the-box default is not just
+> a good accuracy/speed balance — it's also the fastest thing you get without
+> dropping to `low`, and it still has headroom to reach for `xhigh` when a
+> task needs depth. (A rolling `max_over_time(gen_throughput[1h])` sits a bit
+> lower than the burst peak because it averages idle between requests.)
+
 Other `.env` examples:
 
 ```bash
@@ -212,6 +222,13 @@ metrics with multiple label sets (`is_streaming`, `mode`, `phase` — and one
 per historical `model_name`), so the dashboard always aggregates before
 displaying; a raw gauge would otherwise stack one value per series.
 
+> **Later snapshot — medium default, 2026-08-20 ~21:00 CEST.** After the
+> `medium` default went live (server boot ~20:45), the peak generation rate
+> climbed to **323 tok/s** on a burst (the table above's `gen_throughput`
+> max is the earlier, pre-restart idle snapshot). The drafter is still the
+> driver: `sum(sglang:spec_accept_length)` ≈ 3.3 tokens/step, `spec_accept_rate`
+> ≈ 0.33 — the same series the DSpark section graphs.
+
 ---
 
 ## Configuration (`.env`)
@@ -228,8 +245,11 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 
 ## Troubleshooting / verify before you trust
 
-- **Speed numbers**: ~260 tok/s is community-reported; the model card verifies
-  ~180. Re-measure after boot (`status` + a timed decode).
+- **Speed numbers**: ~260 tok/s is community-reported; the model card
+  verifies ~180. The live **`medium` default measured a 323 tok/s burst peak**
+  (see the Thinking section + the "Later snapshot" callout). Re-measure after
+  boot (`status` + a timed decode) — a rolling 1h `gen_throughput` max sits
+  below the burst because it averages idle time between requests.
 - **OOM at boot** (vision preset): lower `--mem-fraction-static` to 0.80 and
   `--context-length` to ~120000.
 - **DSpark vs MTP**: DSpark is the faster drop-in on this hybrid
