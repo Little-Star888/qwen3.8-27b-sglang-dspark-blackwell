@@ -113,7 +113,7 @@ The served id is `qwen3.8-27b-nvfp4` (both presets pass
 | `--mem-fraction-static` | 0.90 | 0.82 |
 | `--max-mamba-cache-size` | 8 | 8 |
 | `--speculative-dspark-block-size` | 7 | 5 |
-| Drafter | NVFP4 (~1.4 GB, default) · BF16 optional (`DRAFT_MODEL_QUANTIZATION=unquant`) | same |
+| Drafter | BF16 RadixArk (~2.5 GB, default, `DRAFT_MODEL_QUANTIZATION=unquant`) · NVFP4 opt-out (`modelopt_fp4`, ~1.4 GB) | same |
 | Expected decode | ~180 baseline, up to **~323 tok/s** measured burst @ `medium` (godspeed) | ~150–200 tok/s (vision) |
 | VRAM | ~31 GB | ~30 GB |
 
@@ -129,24 +129,26 @@ Sizing and drafter knobs are `.env`-overridable: `MAX_MAMBA_CACHE_SIZE`
 higher `--mem-fraction-static` (0.90 vs 0.82). Lowering ctx is just the cost
 of fitting the vision tower, not a speed cause.
 
-### Drafter dtype (NVFP4 vs BF16)
+### Drafter dtype (BF16 default, NVFP4 opt-out)
 
-The default drafter is the ~1.4 GB **NVFP4** build. Community testing on the
-5090 (single-request, thinking ON) found the ~2.5 GB **BF16** RadixArk DSpark
-build drafts noticeably better: accept length ~4.0 (~171 tok/s) vs ~1.7
-(~93 tok/s) — so the BF16 drafter is the faster choice when you want maximum
-decode speed and can spare ~1.1 GB of VRAM:
+The default drafter is the ~2.5 GB **BF16** RadixArk DSpark build
+(`DRAFT_MODEL_QUANTIZATION=unquant`). Community testing on the 5090
+(single-request, thinking ON) showed it drafts noticeably better than the
+~1.4 GB **NVFP4** build: accept length ~4.0 (~171 tok/s) vs ~1.7 (~93 tok/s),
+so it is the default. `./setup.sh weights` downloads it alongside the target.
+
+To opt out to the smaller NVFP4 drafter (saves ~1.1 GB of VRAM):
 
 ```bash
-./setup.sh bf16-drafter        # downloads RadixArk/Qwen3.8-27B-DSpark
+./setup.sh nvfp4-drafter       # downloads gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4
 # in .env:
-DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-BF16
-DRAFT_MODEL_QUANTIZATION=unquant
+DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4
+DRAFT_MODEL_QUANTIZATION=modelopt_fp4
 ```
 
 Restart the preset afterwards (`./run-sglang-godspeed.sh start`). The image's
-`--speculative-draft-model-quantization` accepts `unquant` (BF16),
-`modelopt_fp4` (NVFP4, the default), and the usual SGLang quant list.
+`--speculative-draft-model-quantization` accepts `unquant` (BF16, the
+default), `modelopt_fp4` (NVFP4), and the usual SGLang quant list.
 
 ### Mamba cache sizing (multi-session use)
 
@@ -368,7 +370,7 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 ```
 sglang/
 ├── .env.example               # copy to .env (defaults work)
-├── setup.sh                   # pull image + download target + drafter (+ optional bf16-drafter)
+├── setup.sh                   # pull image + download target + drafter (+ optional nvfp4-drafter)
 ├── run-sglang-godspeed.sh     # text-only preset  (start|stop|logs|status)
 ├── run-sglang-vision.sh       # vision preset     (start|stop|logs|status)
 ├── monitor.sh                 # monitoring up|down|status|dashboard

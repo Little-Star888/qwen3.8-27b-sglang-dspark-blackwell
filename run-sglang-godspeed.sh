@@ -27,7 +27,7 @@ CONTAINER="${CONTAINER_NAME:-sglang-qwen38}"
 HOST_PORT="${HOST_PORT:-8040}"
 CONTAINER_PORT="${CONTAINER_PORT:-30000}"
 MODEL_SUBDIR="${MODEL_SUBDIR:-Qwen3.8-27B-NVFP4-RTX5090-LMHead4}"
-DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
+DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-BF16}"
 API_KEY="${API_KEY:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
 # Qwen3.8 chat-template knobs (JSON): reasoning_effort xhigh/medium/low,
@@ -44,15 +44,15 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #                              threshold and only costs ~5K of the token pool.
 #   MEM_FRACTION_STATIC        target-model VRAM fraction (0.90).
 #   DSPARK_BLOCK_SIZE          draft block gamma (7 godspeed / 5 vision).
-#   DRAFT_MODEL_QUANTIZATION   drafter dtype: modelopt_fp4 (NVFP4 drafter,
-#                              ~1.4 GB, the default) or unquant (BF16
-#                              RadixArk drafter, ~2.5 GB, better accept
-#                              length on the 5090 — pair with a BF16
-#                              DRAFTER_SUBDIR, see setup.sh bf16-drafter).
+#   DRAFT_MODEL_QUANTIZATION   drafter dtype: unquant (BF16 RadixArk
+#                              drafter, ~2.5 GB, the default — better
+#                              accept length on the 5090) or modelopt_fp4
+#                              (NVFP4 drafter, ~1.4 GB, opt-out: pair with
+#                              DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4).
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
 MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.90}"
 DSPARK_BLOCK_SIZE="${DSPARK_BLOCK_SIZE:-7}"
-DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-modelopt_fp4}"
+DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-unquant}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
 DRAFTER_HOST="$DIR/models/$DRAFTER_SUBDIR"

@@ -8,10 +8,10 @@
 # symlink ./models/<subdir> -> $MODELS_ROOT/<subdir> instead.
 #
 # Usage:
-#   ./setup.sh           # pull image + download model + drafter
+#   ./setup.sh           # pull image + download model + (default BF16) drafter
 #   ./setup.sh image     # just pull the image
-#   ./setup.sh weights   # just download model + drafter
-#   ./setup.sh bf16-drafter   # just download the optional BF16 DSpark drafter
+#   ./setup.sh weights   # just download model + (default BF16) drafter
+#   ./setup.sh nvfp4-drafter   # just download the optional NVFP4 drafter (opt-out)
 set -euo pipefail
 
 DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,15 +20,16 @@ DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 MODEL_REPO="${MODEL_REPO:-gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090-LMHead4}"
 MODEL_SUBDIR="${MODEL_SUBDIR:-Qwen3.8-27B-NVFP4-RTX5090-LMHead4}"
-DRAFTER_REPO="${DRAFTER_REPO:-gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4}"
-DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
-# Optional BF16 DSpark drafter (RadixArk): better accept length on the 5090
-# (~4.0 vs ~1.7 for the NVFP4 build) at ~2.5 GB instead of ~1.4 GB.
-# ./setup.sh bf16-drafter downloads it; then set in .env:
-#   DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-BF16
-#   DRAFT_MODEL_QUANTIZATION=unquant
-DRAFTER_BF16_REPO="${DRAFTER_BF16_REPO:-RadixArk/Qwen3.8-27B-DSpark}"
-DRAFTER_BF16_SUBDIR="${DRAFTER_BF16_SUBDIR:-Qwen3.8-27B-DSpark-BF16}"
+# Default DSpark drafter: the BF16 RadixArk build (~2.5 GB). Better accept
+# length on the 5090 (~4.0 vs ~1.7 for the NVFP4 build) -> ~171 vs ~93 t/s.
+DRAFTER_REPO="${DRAFTER_REPO:-RadixArk/Qwen3.8-27B-DSpark}"
+DRAFTER_SUBDIR="${DRAFTER_SUBDIR:-Qwen3.8-27B-DSpark-BF16}"
+# Optional NVFP4 DSpark drafter (the older gittensor-model-hub build, ~1.4 GB).
+# Opt-out: ./setup.sh nvfp4-drafter, then in .env:
+#   DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4
+#   DRAFT_MODEL_QUANTIZATION=modelopt_fp4
+DRAFTER_NVFP4_REPO="${DRAFTER_NVFP4_REPO:-gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4}"
+DRAFTER_NVFP4_SUBDIR="${DRAFTER_NVFP4_SUBDIR:-Qwen3.8-27B-DSpark-NVFP4}"
 MODEL_REVISION="${MODEL_REVISION:-}"
 DRAFTER_REVISION="${DRAFTER_REVISION:-}"
 HF_HUB_ACCESS_TOKEN="${HF_HUB_ACCESS_TOKEN:-}"
@@ -105,27 +106,28 @@ download() {
   du -sh "$MODELS_ROOT/$MODEL_SUBDIR" "$MODELS_ROOT/$DRAFTER_SUBDIR" 2>/dev/null || true
 }
 
-# Download ONLY the optional BF16 DSpark drafter (RadixArk), into its own
-# subdir. Use when you want the higher-accept-length drafter: set
-# DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-BF16 + DRAFT_MODEL_QUANTIZATION=unquant in .env.
-download_bf16_drafter() {
+# Download ONLY the optional NVFP4 DSpark drafter (gittensor-model-hub,
+# ~1.4 GB), into its own subdir. Use for the smaller / opt-out drafter:
+# set DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4 + DRAFT_MODEL_QUANTIZATION=
+# modelopt_fp4 in .env.
+download_nvfp4_drafter() {
   command -v hf >/dev/null 2>&1 || {
     echo "ERROR: 'hf' CLI not found. Install: pip install 'huggingface_hub[cli]'"; exit 2; }
 
-  echo ">>> Downloading BF16 DSpark drafter: $DRAFTER_BF16_REPO -> $MODELS_ROOT/$DRAFTER_BF16_SUBDIR"
-  hf download "$DRAFTER_BF16_REPO" --local-dir "$MODELS_ROOT/$DRAFTER_BF16_SUBDIR" \
+  echo ">>> Downloading NVFP4 DSpark drafter: $DRAFTER_NVFP4_REPO -> $MODELS_ROOT/$DRAFTER_NVFP4_SUBDIR"
+  hf download "$DRAFTER_NVFP4_REPO" --local-dir "$MODELS_ROOT/$DRAFTER_NVFP4_SUBDIR" \
       "${TOKEN_ARGS[@]}"
 
-  [ "$DO_SYMLINK" = "1" ] && link_subdir "$DRAFTER_BF16_SUBDIR"
+  [ "$DO_SYMLINK" = "1" ] && link_subdir "$DRAFTER_NVFP4_SUBDIR"
   echo ">>> Done. To use it, set in .env:"
-  echo "    DRAFTER_SUBDIR=$DRAFTER_BF16_SUBDIR"
-  echo "    DRAFT_MODEL_QUANTIZATION=unquant"
+  echo "    DRAFTER_SUBDIR=$DRAFTER_NVFP4_SUBDIR"
+  echo "    DRAFT_MODEL_QUANTIZATION=modelopt_fp4"
 }
 
 case "${1:-all}" in
   image)        pull_image ;;
   weights)      download ;;
   all)          pull_image; download ;;
-  bf16-drafter) download_bf16_drafter ;;
-  *) echo "usage: $0 [image|weights|all|bf16-drafter]"; exit 2 ;;
+  nvfp4-drafter) download_nvfp4_drafter ;;
+  *) echo "usage: $0 [image|weights|all|nvfp4-drafter]"; exit 2 ;;
 esac
