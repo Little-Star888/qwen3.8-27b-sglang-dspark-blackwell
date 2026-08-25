@@ -160,6 +160,66 @@ which moves the incident threshold to 4/8. `MAX_MAMBA_CACHE_SIZE` is
 sessions, or drop it back to 5 if you want the maximum token pool for
 single-shot long-context work.
 
+### Swapping the target model (safetensors)
+
+The target model and the drafter are two **independent** mounts, wired by two
+independent `.env` knob pairs:
+
+| Role | `.env` keys | mount | server flag |
+|---|---|---|---|
+| Target (main model) | `MODEL_REPO` / `MODEL_SUBDIR` | `/model` | `--model-path /model` |
+| DSpark drafter | `DRAFTER_REPO` / `DRAFTER_SUBDIR` | `/model_dspark` | `--speculative-draft-model-path /model_dspark` |
+
+So the target is not tied to the drafter (or vice versa):
+
+```bash
+# e.g. an uncensored re-merge of the same base, or any other Qwen3.8-27B
+# safetensors build. `setup.sh` downloads it and symlinks it into ./models/.
+MODEL_REPO=<owner>/<repo>
+MODEL_SUBDIR=<subdir>
+./setup.sh weights           # downloads the configured target
+./run-sglang-godspeed.sh start
+```
+
+Rules of thumb for a drop-in target:
+- **Keep the architecture family.** The mamba/Gated-DeltaNet levers and the
+  DSpark numbers are tuned for this exact hybrid arch. A different model
+  (Llama, DeepSeek, …) breaks the assumptions: the drafter no longer applies
+  and the mamba flags stop meaning anything.
+- **Keep the drafter paired with the base it was distilled from.** A
+  moderate fine-tune / uncensored merge of the *same* base keeps draft
+  acceptance high. A heavily diverged fine-tune still runs, but the target's
+  distribution drifts away from the drafts, so accept length and tok/s drop
+  toward non-speculative. Recheck the `spec-accept-length` panel after any
+  target swap.
+- A fully different base model needs a matching drafter rebuild too (or run
+  without DSpark and drop `--speculative-algorithm DSPARK`).
+
+### GGUF is not a drop-in replacement
+
+SGLang itself does have a GGUF path (`--load-format gguf` /
+`--quantization gguf`, CUDA-supported in the `lmsysorg/sglang` image — a wide
+weight-type list: Q4/Q5/Q8, K-quants, IQ series, unquant). But on **this**
+stack it is *not* a drop-in replacement for the NVFP4 build:
+
+- The speed win comes from the coordinated pipeline — custom Gated-DeltaNet /
+  mamba kernels plus DSpark tuned to the NVFP4 target. A GGUF build dequantizes
+  to plain weight tensors; there is no guarantee the Gated-DeltaNet kernels
+  accept GGUF-dequantized weights, and that is the most likely break point.
+- `--speculative-dspark-block-size` and the measured tok/s were tuned against
+  the NVFP4 target's distribution — a GGUF target needs re-tuning, not just
+  swapping.
+- qwen3-arch GGUF loading has had known support gaps upstream
+  (sgl-project/sglang #6281); verify against your image revision before
+  spending a cold start on it.
+- The only thing GGUF genuinely buys here is VRAM headroom (Q4/Q6 quants are
+  smaller than W4A4 NVFP4 + FP8). Note that "uncensored" and "GGUF" are
+  orthogonal: an uncensored base can run as NVFP4 too — that stays a clean
+  drop-in above.
+
+If you want VRAM headroom, the supported move is a lighter *safetensors*
+quant of the same base (e.g. FP8 instead of NVFP4 W4A4), not a format change.
+
 ---
 
 ## Thinking / reasoning (Qwen3.8)
