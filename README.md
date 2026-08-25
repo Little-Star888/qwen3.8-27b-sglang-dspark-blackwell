@@ -173,8 +173,9 @@ independent `.env` knob pairs:
 So the target is not tied to the drafter (or vice versa):
 
 ```bash
-# e.g. an uncensored re-merge of the same base, or any other Qwen3.8-27B
-# safetensors build. `setup.sh` downloads it and symlinks it into ./models/.
+# e.g. another quant of the same base (FP8, FP16, a re-quant or re-merge),
+# or any other Qwen3.8-27B safetensors build. `setup.sh` downloads it and
+# symlinks it into ./models/.
 MODEL_REPO=<owner>/<repo>
 MODEL_SUBDIR=<subdir>
 ./setup.sh weights           # downloads the configured target
@@ -187,7 +188,7 @@ Rules of thumb for a drop-in target:
   (Llama, DeepSeek, …) breaks the assumptions: the drafter no longer applies
   and the mamba flags stop meaning anything.
 - **Keep the drafter paired with the base it was distilled from.** A
-  moderate fine-tune / uncensored merge of the *same* base keeps draft
+  moderate fine-tune or re-quant of the *same* base keeps draft
   acceptance high. A heavily diverged fine-tune still runs, but the target's
   distribution drifts away from the drafts, so accept length and tok/s drop
   toward non-speculative. Recheck the `spec-accept-length` panel after any
@@ -213,9 +214,10 @@ stack it is *not* a drop-in replacement for the NVFP4 build:
   (sgl-project/sglang #6281); verify against your image revision before
   spending a cold start on it.
 - The only thing GGUF genuinely buys here is VRAM headroom (Q4/Q6 quants are
-  smaller than W4A4 NVFP4 + FP8). Note that "uncensored" and "GGUF" are
-  orthogonal: an uncensored base can run as NVFP4 too — that stays a clean
-  drop-in above.
+  smaller than W4A4 NVFP4 + FP8). Note that the model variant and the quant
+  format are orthogonal: any other *safetensors* quant of the base (FP8,
+  FP16, a re-quant) stays the clean drop-in documented above — no need to
+  move to GGUF for that.
 
 If you want VRAM headroom, the supported move is a lighter *safetensors*
 quant of the same base (e.g. FP8 instead of NVFP4 W4A4), not a format change.
