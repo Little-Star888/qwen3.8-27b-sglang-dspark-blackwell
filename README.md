@@ -110,18 +110,55 @@ The served id is `qwen3.8-27b-nvfp4` (both presets pass
 |---|---|---|
 | Vision tower | off (`--language-only`) | **on** |
 | `--context-length` | 237568 | 150000 |
-| `--mem-fraction-static` | 0.985 | 0.88 |
+| `--mem-fraction-static` | 0.90 | 0.82 |
+| `--max-mamba-cache-size` | 8 | 8 |
 | `--speculative-dspark-block-size` | 7 | 5 |
+| Drafter | NVFP4 (~1.4 GB, default) · BF16 optional (`DRAFT_MODEL_QUANTIZATION=unquant`) | same |
 | Expected decode | ~180 baseline, up to **~323 tok/s** measured burst @ `medium` (godspeed) | ~150–200 tok/s (vision) |
 | VRAM | ~31 GB | ~30 GB |
 
 Shared flags: `--kv-cache-dtype fp8_e4m3`, `--attention-backend flashinfer`
 (SM120), mamba linear-attention levers (`--mamba-ssm-dtype bfloat16`,
 `--mamba-radix-cache-strategy extra_buffer_lazy`), `--max-running-requests 1`.
+Sizing and drafter knobs are `.env`-overridable: `MAX_MAMBA_CACHE_SIZE`
+(default 8), `MEM_FRACTION_STATIC`, `DSPARK_BLOCK_SIZE`,
+`DRAFT_MODEL_QUANTIZATION` (see `.env.example`).
 
 **Why text-only is faster** (weights are identical): the gap is DSpark
-`block-size` 7 vs 5 — bigger accepted draft blocks per verify step — plus 98.5%
-VRAM. Lowering ctx is just the cost of fitting the vision tower, not a speed cause.
+`block-size` 7 vs 5 — bigger accepted draft blocks per verify step — plus the
+higher `--mem-fraction-static` (0.90 vs 0.82). Lowering ctx is just the cost
+of fitting the vision tower, not a speed cause.
+
+### Drafter dtype (NVFP4 vs BF16)
+
+The default drafter is the ~1.4 GB **NVFP4** build. Community testing on the
+5090 (single-request, thinking ON) found the ~2.5 GB **BF16** RadixArk DSpark
+build drafts noticeably better: accept length ~4.0 (~171 tok/s) vs ~1.7
+(~93 tok/s) — so the BF16 drafter is the faster choice when you want maximum
+decode speed and can spare ~1.1 GB of VRAM:
+
+```bash
+./setup.sh bf16-drafter        # downloads RadixArk/Qwen3.8-27B-DSpark
+# in .env:
+DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-BF16
+DRAFT_MODEL_QUANTIZATION=unquant
+```
+
+Restart the preset afterwards (`./run-sglang-godspeed.sh start`). The image's
+`--speculative-draft-model-quantization` accepts `unquant` (BF16),
+`modelopt_fp4` (NVFP4, the default), and the usual SGLang quant list.
+
+### Mamba cache sizing (multi-session use)
+
+The model is a hybrid Gated-DeltaNet, so each cached request path holds a
+mamba/SSM state slot (`--max-mamba-cache-size`). At the old default of 5
+slots, long multi-turn sessions with cached-prefix accumulation (~180K ctx)
+fill 4/5 slots and trigger eviction-recompute stalls (3–14 tok/s). The stack
+now ships **8 slots** by default (cost: ~5K of the token pool, 210K → ~205K),
+which moves the incident threshold to 4/8. `MAX_MAMBA_CACHE_SIZE` is
+`.env`-overridable — raise it further if you run very long concurrent
+sessions, or drop it back to 5 if you want the maximum token pool for
+single-shot long-context work.
 
 ---
 
@@ -257,13 +294,19 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
   vision penalty with DSpark.
 - **Metrics target down**: normal until a SGLang server is running; it flips up
   after `./run-sglang-*.sh start` reaches ready.
+- **Prefill degrades after hours of mixed load**: community-observed — after
+  ~4.5 h of multi-tenant use, short-ctx prefill slowed ~2.3× (T32 3.3 s →
+  7.6 s) while short-ctx decode stayed fine; a plain container restart (same
+  args, ~3 min cold start) fully restored baseline. If prefill TTFT creeps up
+  on a long-running box, `./run-sglang-godspeed.sh start` (replaces the
+  container) is the cheap first fix before suspecting the workload.
 
 ## Layout
 
 ```
 sglang/
 ├── .env.example               # copy to .env (defaults work)
-├── setup.sh                   # pull image + download target + drafter
+├── setup.sh                   # pull image + download target + drafter (+ optional bf16-drafter)
 ├── run-sglang-godspeed.sh     # text-only preset  (start|stop|logs|status)
 ├── run-sglang-vision.sh       # vision preset     (start|stop|logs|status)
 ├── monitor.sh                 # monitoring up|down|status|dashboard

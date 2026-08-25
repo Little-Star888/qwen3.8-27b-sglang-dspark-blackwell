@@ -35,6 +35,21 @@ SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
 #   DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"xhigh"}'
 DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 [ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
+# Sizing + drafter knobs (overridable in .env; see .env.example):
+#   MAX_MAMBA_CACHE_SIZE       mamba slot count. Default 8: long multi-turn
+#                              sessions fill 4/5 slots at the old default of 5
+#                              and stall on eviction-recompute (3–14 tok/s);
+#                              8 slots removes it for a ~5K pool cost.
+#   MEM_FRACTION_STATIC        target-model VRAM fraction (0.82).
+#   DSPARK_BLOCK_SIZE          draft block gamma (7 godspeed / 5 vision).
+#   DRAFT_MODEL_QUANTIZATION   drafter dtype: modelopt_fp4 (NVFP4 drafter,
+#                              ~1.4 GB, the default) or unquant (BF16
+#                              RadixArk drafter, ~2.5 GB — better accept
+#                              length on the 5090, see README "Drafter dtype").
+MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.82}"
+DSPARK_BLOCK_SIZE="${DSPARK_BLOCK_SIZE:-5}"
+DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-modelopt_fp4}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
 DRAFTER_HOST="$DIR/models/$DRAFTER_SUBDIR"
@@ -96,13 +111,13 @@ start() {
       --chunked-prefill-size 2048 \
       --mamba-radix-cache-strategy extra_buffer_lazy \
       --mamba-ssm-dtype bfloat16 \
-      --max-mamba-cache-size 5 \
-      --mem-fraction-static 0.82 \
+      --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
+      --mem-fraction-static "$MEM_FRACTION_STATIC" \
       --max-running-requests 1 \
       --speculative-algorithm DSPARK \
       --speculative-draft-model-path /model_dspark \
-      --speculative-dspark-block-size 5 \
-      --speculative-draft-model-quantization modelopt_fp4 \
+      --speculative-dspark-block-size "$DSPARK_BLOCK_SIZE" \
+      --speculative-draft-model-quantization "$DRAFT_MODEL_QUANTIZATION" \
       --reasoning-parser qwen3 \
       --default-chat-template-kwargs "$DEFAULT_CHAT_TEMPLATE_KWARGS" \
       --tool-call-parser qwen3_coder \
