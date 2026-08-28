@@ -55,9 +55,12 @@ This repo exposes those numbers live in the Grafana dashboard.
 
 - **Linux x86_64**, one RTX 5090, NVIDIA driver ≥ 580 (Blackwell).
 - **Podman** (rootless) + the NVIDIA **CDI** device plugin — so `podman run
-  --device nvidia.com/gpu=all` works. (Equivalent Docker + nvidia-container-toolkit
-  also works; the scripts call `podman`, add a shim if you use Docker.)
-- **podman-compose** for the monitoring stack.
+  --device nvidia.com/gpu=all` works — plus **podman-compose** for the
+  monitoring stack. **Or Docker**, no setup needed: with podman absent the
+  scripts fall back to `bin/podman` / `bin/podman-compose`, which translate the
+  three calls that aren't 1:1 (`image exists` → `image inspect`, drop
+  `--replace`, `--device nvidia.com/gpu=all` → `--gpus all`). Docker needs
+  nvidia-container-toolkit; a real podman on `PATH` still takes precedence.
 - **Python `hf` CLI** (huggingface_hub) for weight downloads.
 - ~41 GB for the image + ~20 GB for weights.
 
@@ -374,6 +377,7 @@ sglang/
 ├── run-sglang-godspeed.sh     # text-only preset  (start|stop|logs|status)
 ├── run-sglang-vision.sh       # vision preset     (start|stop|logs|status)
 ├── monitor.sh                 # monitoring up|down|status|dashboard
+├── bin/                       # podman -> docker shims (auto-used when podman is absent)
 ├── docker-compose.yml         # caddy/prometheus/grafana/dcgm (isolated)
 ├── caddy/Caddyfile            # Basic-auth gateway on 8041
 ├── prometheus/prometheus.yml  # scrapes the SGLang server + GPU exporter
