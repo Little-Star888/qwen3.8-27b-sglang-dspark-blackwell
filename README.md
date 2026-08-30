@@ -537,6 +537,48 @@ Output adds directly to the input against the pool: worst case
   kicks in at ~64K, well inside the 122K pool, and streams no longer
   die mid-response.
 
+**Pros / cons of this client-side cap:**
+
+Pros
+
+- **No OOMs, no restarts.** The cap is pure client state in
+  `~/.hermes/config.yaml`; the server stays as-is. An undersized
+  request just gets compacted, never aborts.
+- **Headroom math is stable.** 120K input + 16,384 output = 136K
+  worst case, but compaction fires at ~64K, so the realistic request
+  size is ~64K + 16K = ~80K — 35% inside the 122,069 pool.
+- **Cheap to undo.** Revert two numbers (or delete the
+  `context_length` key entirely) and the next session runs on the
+  model's nominal 237,568 belief again. No server work.
+- **Symmetric with the docs.** The exact keys and the "track the
+  pool after every restart" rule live in this README, so a future
+  pool change (DFlash window, mfs, drafter) has a documented
+  follow-up step instead of a repeat of this incident.
+
+Cons
+
+- **Compaction runs more often.** At a 120K belief the trigger is
+  ~64K; with the old 237K belief it was ~102K (50% of the 204,800
+  input budget at `max_tokens` 32,768). So long sessions summarize
+  earlier and more frequently, and each summary costs a full pass
+  over the protected tail with the same model (extra tokens +
+  wall-clock per compaction).
+- **Summaries are lossy.** Everything compressed is reduced to a
+  reference-only snapshot; exact text inside compacted turns is
+  gone from the live context (retrievable only from session
+  history). Heavy 100K+-token research sessions feel this more
+  than coding sessions.
+- **16K output ceiling per response.** Very long single responses
+  (big code files, long documents) get cut at 16,384 tokens.
+  Bumping it back toward 32K eats ~16K of pool headroom — fine for
+  a 122K pool, not for a 98K one.
+- **It's a number you maintain.** The cap only stays correct while
+  `sglang:max_total_num_tokens` stays where you think it is. A
+  server-side knob change (drafter, `MEM_FRACTION_STATIC`,
+  `DRAFT_WINDOW_SIZE`) silently moves the pool; nothing on the client
+  side notices. The `context_length` comment + this section are the
+  only tripwire.
+
 ## Troubleshooting / verify before you trust
 
 - **Speed numbers**: the default DFlash2 recipe measured **221 tok/s median /
