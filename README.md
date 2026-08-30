@@ -579,6 +579,38 @@ Cons
   side notices. The `context_length` comment + this section are the
   only tripwire.
 
+### Setup comparison: no cap vs 98K cap vs 120K cap
+
+All three are the same two YAML values, read off the same formula
+(`trigger = max(50% × (context_length − max_tokens), 64K minimum)`):
+
+| | **A: no cap** (legacy) | **B: 98K cap** | **C: 120K cap** (current) |
+|---|---|---|---|
+| `context_length` | 237,568 (nominal flag — pool is *not* this) | 98,000 | 120,000 |
+| `max_tokens` | 32,768 | 16,384 | 16,384 |
+| compaction trigger | **~102K** (50% of 204,800) | **64K** (50% = 40,808 → floored) | **64K** (50% = 51,808 → floored) |
+| realistic max request (trigger + output) | ~135K | ~80K | ~80K |
+| OOMs on the **122K pool** (current 0.91 default)? | **yes** — the 2026-08-30 incident | no, ~42K headroom | no, ~42K headroom |
+| OOMs on a **98K pool** (legacy 0.88)? | **yes** | no, ~18K headroom | no, ~18K headroom (tight) |
+| longest single response | 32,768 tokens | 16,384 | 16,384 |
+| compaction load | lightest (fires at ~102K, ~1×/session for typical work) | heaviest relatively: 64K is **78%** of its 81,616 input budget | 64K is **62%** of its 103,616 budget — same absolute trigger as B, more breathing room before it |
+| extra cost per compaction | — | same (one summary pass over the protected tail, same model) | same as B |
+| maintenance burden | lowest to think about, **highest risk** — client believes a window the pool can't back, until it OOMs | only meaningful while the pool sits at ~98K; on the 122K pool it wastes 24K of unused headroom | tracks the current default pool; **re-verify after every server-side change** (mfs, drafter, draft window) |
+
+**When to use which:**
+
+- **A** — only when the pool is ≥ ~140K (old NVFP4-drafter era, mfs 0.90)
+  *and* you want 32K-token single responses. Do not run it on the
+  DFlash2 defaults.
+- **B** — the safe cap for a **98K pool** (legacy `MEM_FRACTION_STATIC=0.88`).
+  On the current 122K pool it works but needlessly caps sessions 24K
+  early — pick **C** instead.
+- **C** — matches the current 128K default. If you later move the pool
+  (e.g. `DRAFT_WINDOW_SIZE=8192` → ~135K+), bump `context_length` in
+  lockstep; with `max_tokens` 16,384 the trigger un-floors once
+  `context_length` passes ~144K (50% of the input budget crosses the
+  64K minimum), after which it climbs proportionally on its own.
+
 ## Troubleshooting / verify before you trust
 
 - **Speed numbers**: the default DFlash2 recipe measured **221 tok/s median /
