@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the SGLang + DSpark monitoring dashboard JSON for Grafana.
+"""Generate the SGLang monitoring dashboard JSON for Grafana.
 
 Mirrors the vLLM dashboard structure (stat KPIs -> timeseries -> GPU -> errors),
 reworked for SGLang's real `sglang:`-prefixed metric names, and adds a
@@ -102,8 +102,8 @@ for t,e,u,d,span,th in k:
     r["panels"].append(stat(t,e,unit=u,decimals=d,span=span,threshold=th))
 panels.append(r)
 
-# ---- Speculative decoding (DSpark) ----
-rs = row("Speculative decoding (DSpark drafter)")
+# ---- Speculative decoding (drafter) ----
+rs = row("Speculative decoding (drafter)")
 rs["panels"] += [
     stat("Drafts accepted / step", 'sum(sglang:spec_accept_length)', None, 3, 4,
          [{"color":"orange","value":None},{"color":"green","value":2},{"color":"green","value":4}]),
@@ -288,8 +288,8 @@ def reflow(panels):
 panels = reflow(panels)
 
 dash = {
-    "title": "SGLang — Qwen3.8-27B (DSpark, RTX5090)",
-    "tags": ["sglang", "qwen3.8-27b", "nvfp4", "dspark", "rtx5090"],
+    "title": "SGLang — Qwen3.8-27B NVFP4 (RTX5090)",
+    "tags": ["sglang", "qwen3.8-27b", "nvfp4", "dflash2", "dspark", "rtx5090"],
     "timezone": "browser",
     "refresh": "10s",
     "editable": True,

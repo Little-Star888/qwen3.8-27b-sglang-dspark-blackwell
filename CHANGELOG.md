@@ -26,6 +26,8 @@ User-facing changes to this stack, newest first. Dates are commit dates.
   shims (translate `image exists` → `image inspect`, drop `--replace`,
   `--device nvidia.com/gpu=all` → `--gpus all`). Inert on Podman hosts —
   a real `podman` on `PATH` always wins. Self-test: `./bin/test-shim.sh`.
+- Dashboard retitle: "DSpark, RTX5090" → "Qwen3.8-27B NVFP4 (RTX5090)";
+  spec-decoding row now drafter-neutral (covers DFlash2 + DSpark).
 
 ## 2026-08-25
 

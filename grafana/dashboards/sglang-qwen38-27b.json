@@ -1,9 +1,10 @@
 {
-  "title": "SGLang \u2014 Qwen3.8-27B (DSpark, RTX5090)",
+  "title": "SGLang \u2014 Qwen3.8-27B NVFP4 (RTX5090)",
   "tags": [
     "sglang",
     "qwen3.8-27b",
     "nvfp4",
+    "dflash2",
     "dspark",
     "rtx5090"
   ],
@@ -391,7 +392,7 @@
     },
     {
       "type": "row",
-      "title": "Speculative decoding (DSpark drafter)",
+      "title": "Speculative decoding (drafter)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
