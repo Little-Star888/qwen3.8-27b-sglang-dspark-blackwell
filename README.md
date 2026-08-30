@@ -140,7 +140,7 @@ The served id is `qwen3.8-27b-nvfp4` (all presets pass
 | Drafter | DFlash2 z-lab (~3.6 GB BF16) | DFlash2 | DSpark BF16 RadixArk (~2.6 GB) | DSpark BF16 |
 | Image | nightly (DFlash2) | nightly | `qwen38-27b` | `qwen38-27b` |
 | `--context-length` | 237568 | 150000 | 237568 | 120000 |
-| `--mem-fraction-static` | 0.88 | 0.82 | 0.88 | 0.82 |
+| `--mem-fraction-static` | 0.91 | 0.82 | 0.88 | 0.82 |
 | `--max-mamba-cache-size` | 8 | 8 | 8 | 8 |
 | Draft flags | block 8 + draft window 16384 | block 8 + draft window 16384 | block 7 | block 5 |
 | Expected decode | median **221** · peak **277 tok/s** | ~150–200 tok/s | median **126** · peak **~300 tok/s** (323 burst, earlier window) | ~150–200 tok/s |
@@ -251,8 +251,8 @@ Measured on this box (peak → current → target):
 | Stack | mfs | drafter | KV GB | **token pool** |
 |---|---|---|---|---|
 | peak | 0.90 | NVFP4 DSpark | 5.15 | **~169K** |
-| current | 0.88 | DFlash2 (draft window 16384) | 3.00 | **~98K** |
-| 128K target | 0.91 | DFlash2 | ~4.0 | **~128–131K** (predicted) |
+| legacy (≤ 08-29) | 0.88 | DFlash2 (draft window 16384) | 3.00 | **~98K** |
+| **default (128K)** | 0.91 | DFlash2 (draft window 16384) | ~4.0 | **~128–131K** (predicted — verify) |
 
 **Levers, in order of preference** (each frees VRAM → grows the pool;
 verify the real number with `sglang:max_total_num_tokens` after each boot):
@@ -263,34 +263,30 @@ verify the real number with `sglang:max_total_num_tokens` after each boot):
 | 2. Mamba slots | `MAX_MAMBA_CACHE_SIZE` | 8 → 5 frees ~5K of the pool; drop only for single-shot long-ctx work. |
 | 3. Mem fraction | `MEM_FRACTION_STATIC` | Primary pool dial. Higher = bigger pool, less OOM headroom at boot. |
 
-### The 128K middle-ground recipe
+### The 128K default (and how to move it)
 
-The current default (DFlash2, mfs 0.88) lands at **~98K** — enough to OOM a
-~75K-context agent session mid-decode once `max_tokens` pushes it past the
-pool. If you want a steadier ~128K usable context, free ~1 GB back into the KV
-pool. Two equivalent ways (pick one; both need a `./run-sglang-dflash.sh start`
-to take effect — the maintainer's live server is not restarted on your behalf):
+The script default since 2026-08-30 is the **128K recipe**: `MEM_FRACTION_STATIC=0.91`
++ DFlash2 draft window 16384, predicted pool **~128–131K**. It fixes the failure
+mode the older 0.88 default had — a ~98K pool OOMs a ~75K-context agent session
+mid-decode once `max_tokens` pushes it past the pool.
 
 ```bash
-# in .env  — option A: mem-fraction (the biggest single lever)
-MEM_FRACTION_STATIC=0.91
-# option B (or combined): shrink the DFlash2 draft pool
-DRAFT_WINDOW_SIZE=8192
+# .env overrides (script default is the 128K recipe; only set these to move away)
+MEM_FRACTION_STATIC=0.91       # 128K default; 0.88 → ~98K, 0.89 → OOM-backoff
+DRAFT_WINDOW_SIZE=16384        # extra lever: 8192 shrinks the draft pool (more headroom)
 ```
 
-Expected pool: ~98K → **~128–131K** (raising mfs by 0.03 adds 0.03 × 32.6 GB ≈
-1.0 GB of budget; weights/drafter are fixed, so it all goes to the KV pool ≈
-+32K tokens). **Verify the real number after boot** — read
+**Verify the real number after every boot** — read
 `sglang:max_total_num_tokens` from `/metrics` (Grafana panel "KV token pool").
-If it lands under 128K, lower `DRAFT_WINDOW_SIZE` further or raise mfs; if it
-OOMs at boot (headroom < ~1 GB), back off mfs to 0.89.
+If it lands under 128K, lower `DRAFT_WINDOW_SIZE` (16384 → 8192) or raise mfs;
+if it OOMs at boot (headroom < ~1 GB), back off mfs to 0.89.
 
 **Companion (client side):** whatever pool you land on, the client's
 `context_length` cap for this endpoint must track it — otherwise the client
 believes the window is 237K and only compresses near ~118K, which is *past*
 where a mid-decode OOM actually happens. In Hermes, set
 `custom_providers[].models.qwen3.8-27b-nvfp4.context_length` to the measured
-pool (`128000` for the 128K recipe, `98000` for the current default) in
+pool (`128000` for the 128K default, `98000` for the legacy 0.88 setup) in
 `~/.hermes/config.yaml`.
 
 ### Swapping the target model (safetensors)

@@ -63,10 +63,10 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #   CONTEXT_LENGTH           target ctx (default 237568, same as godspeed):
 #                            the DFlash2 draft pool is bounded by
 #                            --speculative-draft-window-size, not by ctx.
-#   MEM_FRACTION_STATIC      target-model VRAM fraction (default 0.88 —
-#                            ~0.65 GB lower than the old 0.90 so the 32 GB
-#                            5090 keeps OOM headroom; the boot-time
-#                            startup_available_gpu_memory was ~1.16 GB at 0.90).
+#   MEM_FRACTION_STATIC      target-model VRAM fraction (default 0.91 — the
+#                            128K-context default: 0.88 lands at a ~98K token
+#                            pool, 0.91 frees ~1 GB more → ~128–131K. Boot
+#                            OOM (headroom < ~1 GB): back off to 0.89.)
 #   DFLASH_BLOCK_SIZE        verify window / draft tokens per step (default 8).
 #   DRAFT_WINDOW_SIZE        draft target-token window — the one knob that
 #                            bounds the DFlash2 draft KV pool (default 16384).
@@ -74,7 +74,7 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #                            poor accept length on very long prompts: raise it.
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
 CONTEXT_LENGTH="${CONTEXT_LENGTH:-237568}"
-MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.88}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.91}"
 DFLASH_BLOCK_SIZE="${DFLASH_BLOCK_SIZE:-8}"
 DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-16384}"
 

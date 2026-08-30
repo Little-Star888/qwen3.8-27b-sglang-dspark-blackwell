@@ -7,6 +7,16 @@ User-facing changes to this stack, newest first. Dates are commit dates.
 - **DFlash2 is now the default recipe** (`run-sglang-dflash.sh` /
   `run-sglang-dflash-vision.sh`). The DSpark presets (`godspeed` / `vision`)
   are the alternative: higher burst ceiling, lower floor.
+- **DFlash text-only default mem-fraction 0.88 → 0.91 (128K-context
+  default)**: frees ~1 GB more into the FP8 KV pool, predicted pool
+  ~98K → ~128–131K tokens (`sglang:max_total_num_tokens`). Fixes the
+  mid-decode OOM a ~75K-context agent session hit against the ~98K pool
+  once `max_tokens` pushed past it. DFlash vision stays 0.82; DSpark
+  presets stay 0.88 (unmeasured pool — verify per-preset). Verify after
+  restart; boot OOM (headroom < ~1 GB) → back off to 0.89. README:
+  "The 128K default (and how to move it)". Client-side, keep the Hermes
+  `context_length` cap tracking the measured pool (128000 for the new
+  default).
 - `setup.sh` default now pulls the DFlash2 nightly image + target + DFlash2
   drafter; `./setup.sh dspark` is the new alternative path (DSpark image +
   drafter); `nvfp4-drafter` and `dflash2` subcommands kept.
