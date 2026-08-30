@@ -150,6 +150,38 @@ Restart the preset afterwards (`./run-sglang-godspeed.sh start`). The image's
 `--speculative-draft-model-quantization` accepts `unquant` (BF16, the
 default), `modelopt_fp4` (NVFP4), and the usual SGLang quant list.
 
+### DFlash 2 drafter (alternative block-diffusion presets)
+
+An alternative drafter family: **DFlash2** (`z-lab/Qwen3.8-27B-DFlash2`,
+`DFlash2DraftModel`, 5-layer block-diffusion, ~3.8 GB BF16). Instead of
+autoregressively proposing a block like DSpark, it drafts a whole block
+diffusively in one denoise step. Launched by `run-sglang-dflash.sh`
+(text-only) / `run-sglang-dflash-vision.sh` (vision on) — own knobs
+(`DFLASH_DRAFTER_SUBDIR`, `DFLASH_SGLANG_IMAGE`, `DFLASH_BLOCK_SIZE`,
+`DRAFT_WINDOW_SIZE`), so `.env` DSpark settings can never re-point it. Needs
+the newer nightly image (DFlash2DraftModel landed upstream 2026-08-19):
+`./setup.sh dflash2` downloads the drafter, presets pull the image.
+
+**Measured: DFlash2 vs DSpark godspeed** (same main checkpoint,
+`Qwen3.8-27B-NVFP4-RTX5090-LMHead4`; numbers = median / peak of the Grafana
+data source, DSpark godspeed Aug 25–30 window, DFlash2 since Aug 30 ~09:00 UTC):
+
+| | DSpark godspeed (BF16, block 7) | DFlash2 (block 8, draft window 16384) |
+|---|---|---|
+| Throughput (tok/s) | median **126** · peak **299** | median **221** · peak **277** |
+| Draft accept length (tok/step) | median **2.6** · peak **5.25** | median **4.0** · peak **5.4** |
+| Accept rate (accepted/proposed) | median **0.23** · peak **0.61** | median **0.43** · peak **0.62** |
+| TTFT p50 | 0.51 s | 0.47 s |
+| Inter-token latency p50 | ~10 ms | ~0–4 ms |
+| VRAM (mem-fraction) | 0.88 → ~30.6 GB | 0.88 → ~30.6 GB |
+
+DFlash2 trades DSpark's ~300 tok/s burst ceiling for a **much higher floor**:
+the median throughput is ~1.8× the DSpark median and the accept-length median
+goes 2.6 → 4.0 — the win is steadiness, not peaks. The two windows are not
+equal in size (DFLASH2 sample is the shorter one, a few hours of live
+traffic vs days), so read the DFlash2 medians as "at or above DSpark"
+rather than a head-to-head benchmark.
+
 ### Mamba cache sizing (multi-session use)
 
 The model is a hybrid Gated-DeltaNet, so each cached request path holds a
@@ -370,9 +402,11 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 ```
 sglang/
 ├── .env.example               # copy to .env (defaults work)
-├── setup.sh                   # pull image + download target + drafter (+ optional nvfp4-drafter)
-├── run-sglang-godspeed.sh     # text-only preset  (start|stop|logs|status)
-├── run-sglang-vision.sh       # vision preset     (start|stop|logs|status)
+├── setup.sh                   # pull image + download target + drafter (+ dflash2)
+├── run-sglang-godspeed.sh     # DSpark preset, text-only (start|stop|logs|status)
+├── run-sglang-vision.sh       # DSpark preset, vision ON
+├── run-sglang-dflash.sh       # DFlash2 preset, text-only (block-diffusion drafter)
+├── run-sglang-dflash-vision.sh# DFlash2 preset, vision ON
 ├── monitor.sh                 # monitoring up|down|status|dashboard
 ├── docker-compose.yml         # caddy/prometheus/grafana/dcgm (isolated)
 ├── caddy/Caddyfile            # Basic-auth gateway on 8041
