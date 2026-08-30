@@ -25,7 +25,7 @@ That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
 | GPU | 1× RTX 5090 (32 GB, sm_120 / Blackwell) |
 | Target speed | up to ~323 tok/s measured burst (godspeed @ `medium` default) · ~150–200 tok/s (vision) |
 | Context | ~236k (text-only) / ~150k (vision) |
-| Ports | API 8040 · gateway 8041 · Grafana 8042 · Prometheus 127.0.0.1:9091 |
+| Ports | API 8040 · gateway 8041 · Grafana 8042 · Prometheus 9091 (all LAN-reachable) |
 
 The speed is the DSpark drafter: it proposes a block of tokens the big model
 verifies in one step. The higher the accepted-draft rate, the faster the decode.
@@ -41,7 +41,7 @@ This repo exposes those numbers live in the Grafana dashboard.
 | 🎲 Speculative decoding | DSpark drafter proposes a block of draft tokens; the 27B model **verifies the whole block in one step** (block 7 godspeed / 5 vision) |
 | 👁️ Two presets | **godspeed** (text-only, 236k ctx) ⇄ **vision** (tower on, 150k ctx) — swappable on one GPU |
 | 📊 Grafana | Auto-provisioned dashboard: dense KPI tiles + a live **DSpark win-rate** section. `make_dashboard.py` is the source; the JSON is build output |
-| 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`127.0.0.1:9091`, local-only) |
+| 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`:9091`, LAN-reachable; a "Prometheus targets" row shows target health) |
 | 🎛️ GPU telemetry | DCGM exporter (util / mem / temp / power) alongside `sglang:` engine metrics; every tile aggregated (`sum()`/`max()`) to a single value |
 | 🔐 Gateway | Caddy **Basic-auth** on 8041 → OpenAI/Anthropic endpoints with bearer `API_KEY`; auth-off by default |
 | 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); boot does a read-only VRAM check — it never stops other services |
@@ -110,7 +110,7 @@ The served id is `qwen3.8-27b-nvfp4` (both presets pass
 |---|---|---|
 | Vision tower | off (`--language-only`) | **on** |
 | `--context-length` | 237568 | 150000 |
-| `--mem-fraction-static` | 0.90 | 0.82 |
+| `--mem-fraction-static` | 0.88 | 0.82 |
 | `--max-mamba-cache-size` | 8 | 8 |
 | `--speculative-dspark-block-size` | 7 | 5 |
 | Drafter | BF16 RadixArk (~2.5 GB, default, `DRAFT_MODEL_QUANTIZATION=unquant`) · NVFP4 opt-out (`modelopt_fp4`, ~1.4 GB) | same |
@@ -126,7 +126,7 @@ Sizing and drafter knobs are `.env`-overridable: `MAX_MAMBA_CACHE_SIZE`
 
 **Why text-only is faster** (weights are identical): the gap is DSpark
 `block-size` 7 vs 5 — bigger accepted draft blocks per verify step — plus the
-higher `--mem-fraction-static` (0.90 vs 0.82). Lowering ctx is just the cost
+higher `--mem-fraction-static` (0.88 vs 0.82). Lowering ctx is just the cost
 of fitting the vision tower, not a speed cause.
 
 ### Drafter dtype (BF16 default, NVFP4 opt-out)

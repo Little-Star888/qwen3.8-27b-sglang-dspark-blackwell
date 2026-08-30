@@ -42,7 +42,10 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #                              reach 4/5 slots at the old default of 5 and stall
 #                              on eviction-recompute; 8 slots moves the incident
 #                              threshold and only costs ~5K of the token pool.
-#   MEM_FRACTION_STATIC        target-model VRAM fraction (0.90).
+#   MEM_FRACTION_STATIC        target-model VRAM fraction (0.88 — ~0.65 GB
+#                              below the old 0.90, so the 32 GB 5090 keeps OOM
+#                              headroom; boot startup_available_gpu_memory was
+#                              ~1.16 GB at 0.90).
 #   DSPARK_BLOCK_SIZE          draft block gamma (7 godspeed / 5 vision).
 #   DRAFT_MODEL_QUANTIZATION   drafter dtype: unquant (BF16 RadixArk
 #                              drafter, ~2.5 GB, the default — better
@@ -50,7 +53,7 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #                              (NVFP4 drafter, ~1.4 GB, opt-out: pair with
 #                              DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4).
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
-MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.90}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.88}"
 DSPARK_BLOCK_SIZE="${DSPARK_BLOCK_SIZE:-7}"
 DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-unquant}"
 
