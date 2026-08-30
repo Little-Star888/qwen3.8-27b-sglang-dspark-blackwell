@@ -252,7 +252,7 @@ Measured on this box (peak → current → target):
 |---|---|---|---|---|
 | peak | 0.90 | NVFP4 DSpark | 5.15 | **~169K** |
 | legacy (≤ 08-29) | 0.88 | DFlash2 (draft window 16384) | 3.00 | **~98K** |
-| **default (128K)** | 0.91 | DFlash2 (draft window 16384) | ~4.0 | **~128–131K** (predicted — verify) |
+| **default (128K)** | 0.91 | DFlash2 (draft window 16384) | 3.73 | **~122K** (measured 122,069 on 2026-08-30; boot headroom 0.85 GB) |
 
 **Levers, in order of preference** (each frees VRAM → grows the pool;
 verify the real number with `sglang:max_total_num_tokens` after each boot):
@@ -266,7 +266,9 @@ verify the real number with `sglang:max_total_num_tokens` after each boot):
 ### The 128K default (and how to move it)
 
 The script default since 2026-08-30 is the **128K recipe**: `MEM_FRACTION_STATIC=0.91`
-+ DFlash2 draft window 16384, predicted pool **~128–131K**. It fixes the failure
++ DFlash2 draft window 16384, measured pool **~122K** (122,069 on the
+2026-08-30 boot; boot headroom 0.85 GB — slightly under the ~1 GB comfort
+line, but clean). It fixes the failure
 mode the older 0.88 default had — a ~98K pool OOMs a ~75K-context agent session
 mid-decode once `max_tokens` pushes it past the pool.
 
