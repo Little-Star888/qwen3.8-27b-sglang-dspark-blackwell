@@ -21,6 +21,11 @@ User-facing changes to this stack, newest first. Dates are commit dates.
 - Monitoring stack to current latest-stable: **Grafana 11.1.4 → 13.2.0**,
   **Prometheus v3.13.2 → v3.14.0** (Caddy 2.11.4 already current;
   dcgm-exporter remains the local build).
+- **Docker hosts now work with no setup** (community PR): when `podman`
+  is absent the scripts fall back to `bin/podman` / `bin/podman-compose`
+  shims (translate `image exists` → `image inspect`, drop `--replace`,
+  `--device nvidia.com/gpu=all` → `--gpus all`). Inert on Podman hosts —
+  a real `podman` on `PATH` always wins. Self-test: `./bin/test-shim.sh`.
 
 ## 2026-08-25
 
