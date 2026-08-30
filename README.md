@@ -224,6 +224,75 @@ which moves the incident threshold to 4/8. `MAX_MAMBA_CACHE_SIZE` is
 sessions, or drop it back to 5 if you want the maximum token pool for
 single-shot long-context work.
 
+### Context pool: `--context-length` vs the real token pool
+
+Two different numbers are both called "context length" and they are not the
+same thing:
+
+- **`--context-length`** (nominal). Set to `237568` (text-only). This is the
+  *architectural* cap — the longest sequence the model can address. It costs
+  almost no VRAM; it's a ceiling, not a budget. A 230K request still has to
+  physically fit in the KV pool below or it OOMs.
+- **The KV token pool** (`sglang:max_total_num_tokens`). This is the *physical*
+  limit: how many KV cache slots actually exist in VRAM. It is recomputed from
+  free VRAM at every container start, and it is the number your real requests
+  must fit in (prompt + generated tokens ≤ pool).
+
+On this 32 GB 5090 the pool is driven by `--mem-fraction-static` (how much
+VRAM SGLang may hold for weights + KV + drafters) and by the drafter's own
+draft KV pool. The measured relationship is stable across boots:
+
+**pool ≈ `kv_cache_memory_GB` × 32,768 tokens/GB** (FP8_e4m3 cache, ≈32 B/token;
+measured 32,763–32,772 across every boot this month — the ratio is stable, so
+the table below is a prediction you can check against `/metrics`).
+
+Measured on this box (peak → current → target):
+
+| Stack | mfs | drafter | KV GB | **token pool** |
+|---|---|---|---|---|
+| peak | 0.90 | NVFP4 DSpark | 5.15 | **~169K** |
+| current | 0.88 | DFlash2 (draft window 16384) | 3.00 | **~98K** |
+| 128K target | 0.91 | DFlash2 | ~4.0 | **~128–131K** (predicted) |
+
+**Levers, in order of preference** (each frees VRAM → grows the pool;
+verify the real number with `sglang:max_total_num_tokens` after each boot):
+
+| Lever | `.env` knob | Effect |
+|---|---|---|
+| 1. Draft window | `DRAFT_WINDOW_SIZE` | DFlash2's own draft KV pool scales with the window. 16384 → 8192 is the least-disruptive first cut (keeps 16K of draft context — plenty for agent sessions); halving it frees roughly half the draft pool's share of the budget. |
+| 2. Mamba slots | `MAX_MAMBA_CACHE_SIZE` | 8 → 5 frees ~5K of the pool; drop only for single-shot long-ctx work. |
+| 3. Mem fraction | `MEM_FRACTION_STATIC` | Primary pool dial. Higher = bigger pool, less OOM headroom at boot. |
+
+### The 128K middle-ground recipe
+
+The current default (DFlash2, mfs 0.88) lands at **~98K** — enough to OOM a
+~75K-context agent session mid-decode once `max_tokens` pushes it past the
+pool. If you want a steadier ~128K usable context, free ~1 GB back into the KV
+pool. Two equivalent ways (pick one; both need a `./run-sglang-dflash.sh start`
+to take effect — the maintainer's live server is not restarted on your behalf):
+
+```bash
+# in .env  — option A: mem-fraction (the biggest single lever)
+MEM_FRACTION_STATIC=0.91
+# option B (or combined): shrink the DFlash2 draft pool
+DRAFT_WINDOW_SIZE=8192
+```
+
+Expected pool: ~98K → **~128–131K** (raising mfs by 0.03 adds 0.03 × 32.6 GB ≈
+1.0 GB of budget; weights/drafter are fixed, so it all goes to the KV pool ≈
++32K tokens). **Verify the real number after boot** — read
+`sglang:max_total_num_tokens` from `/metrics` (Grafana panel "KV token pool").
+If it lands under 128K, lower `DRAFT_WINDOW_SIZE` further or raise mfs; if it
+OOMs at boot (headroom < ~1 GB), back off mfs to 0.89.
+
+**Companion (client side):** whatever pool you land on, the client's
+`context_length` cap for this endpoint must track it — otherwise the client
+believes the window is 237K and only compresses near ~118K, which is *past*
+where a mid-decode OOM actually happens. In Hermes, set
+`custom_providers[].models.qwen3.8-27b-nvfp4.context_length` to the measured
+pool (`128000` for the 128K recipe, `98000` for the current default) in
+`~/.hermes/config.yaml`.
+
 ### Swapping the target model (safetensors)
 
 The target model and the drafter are two **independent** mounts, wired by
