@@ -22,6 +22,8 @@
 set -euo pipefail
 
 DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Fall back to bin/ shims (podman -> docker) when podman isn't installed.
+PATH="$PATH:$DIR/bin"
 # shellcheck disable=SC1091
 [ -f "$DIR/.env" ] && source "$DIR/.env"
 

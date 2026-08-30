@@ -9,6 +9,8 @@
 #   ./monitor.sh dashboard# print the Grafana dashboard URL + login hints
 set -uo pipefail
 DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Fall back to bin/ shims (podman -> docker) when podman isn't installed.
+PATH="$PATH:$DIR/bin"
 [ -f "$DIR/.env" ] && source "$DIR/.env"
 
 GRAFANA_HOST_PORT="${GRAFANA_HOST_PORT:-8042}"
