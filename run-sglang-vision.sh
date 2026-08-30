@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# run-sglang-vision.sh — VISION + DSpark: ~150k ctx, ~150-200 tok/s, ~30 GB VRAM.
+# run-sglang-vision.sh — VISION + DSpark (DSpark alternative): ~150k ctx, ~150-200 tok/s, ~30 GB VRAM.
+# The DFlash2 vision alternative is run-sglang-dflash-vision.sh.
 #
 # Same SGLang + NVFP4 (LMHead4) + DSpark + flashinfer SM120 stack as godspeed,
 # but the vision tower stays LIVE (no --language-only) and VRAM is rebalanced so
@@ -108,7 +109,7 @@ start() {
       --host 0.0.0.0 --port "$CONTAINER_PORT" \
       --kv-cache-dtype fp8_e4m3 \
       --attention-backend flashinfer \
-      --context-length 150000 \
+      --context-length 120000 \
       --chunked-prefill-size 2048 \
       --mamba-radix-cache-strategy extra_buffer_lazy \
       --mamba-ssm-dtype bfloat16 \

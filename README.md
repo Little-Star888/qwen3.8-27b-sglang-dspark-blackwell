@@ -1,13 +1,16 @@
-# Qwen3.8-27B (NVFP4) on SGLang — DSpark speculative decoding
+# Qwen3.8-27B (NVFP4) on SGLang — DFlash2 speculative decoding
 
-Run the 27B model on a single **RTX 5090 (Blackwell, 32 GB)** at high decode
-speed using SGLang + an NVFP4 checkpoint + a DSpark drafter. One self-contained
-repo: prebuilt image, one `setup` command, two launch presets, and an optional
-monitoring dashboard.
+Run the 27B model on a single **RTX 5090 (Blackwell, 32 GB)** at fast
+decode speed using SGLang + an NVFP4 checkpoint + the **DFlash2 drafter**
+(z-lab block-diffusion) — the default recipe. The **DSpark drafter is the
+alternative**: a bit more burst ceiling, a much lower floor. One
+self-contained repo: prebuilt image, one `setup` command, four launch
+presets (two default + two alternative), and an optional monitoring
+dashboard.
 
 ```
-./setup.sh            # pull image + download weights (target + drafter)
-./run-sglang-godspeed.sh start
+./setup.sh                  # pull image + download weights (target + DFlash2 drafter)
+./run-sglang-dflash.sh start
 ```
 
 That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
@@ -20,16 +23,18 @@ That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
 | | |
 |---|---|
 | Model | Qwen3.8-27B, NVFP4 (weights) + lm_head in NVFP4 + FP8 KV cache |
-| Draft | DSpark drafter (separate ~1.4 GB model, speculative decoding) |
-| Engine | SGLang (`lmsysorg/sglang:qwen38-27b`, prebuilt, no JIT) |
+| Draft | **DFlash2 drafter** (z-lab block-diffusion, separate ~3.6 GB BF16 model) — default · DSpark BF16 (~2.6 GB) — alternative |
+| Engine | SGLang (`lmsysorg/sglang:nightly-dev-cu13-20260830-a1fe4e30`, prebuilt, no JIT) |
 | GPU | 1× RTX 5090 (32 GB, sm_120 / Blackwell) |
-| Target speed | up to ~323 tok/s measured burst (godspeed @ `medium` default) · ~150–200 tok/s (vision) |
-| Context | ~236k (text-only) / ~150k (vision) |
+| Target speed | default DFlash2: **median 221 tok/s, peak 277** (measured) · ~150–200 tok/s (vision) · DSpark alternative: ~300–323 tok/s burst ceiling, median 126 |
+| Context | ~236k (text-only) / ~150k (vision default) / ~120k (DSpark vision) |
 | Ports | API 8040 · gateway 8041 · Grafana 8042 · Prometheus 9091 (all LAN-reachable) |
 
-The speed is the DSpark drafter: it proposes a block of tokens the big model
-verifies in one step. The higher the accepted-draft rate, the faster the decode.
-This repo exposes those numbers live in the Grafana dashboard.
+The speed is the drafter: it proposes a block of tokens the big model
+verifies in one step. The higher the accepted-draft rate, the faster the
+decode. DFlash2 drafts a whole block diffusively in one denoise step,
+which is what lifts the *median*; this repo exposes all of it live in the
+Grafana dashboard.
 
 ---
 
@@ -38,16 +43,16 @@ This repo exposes those numbers live in the Grafana dashboard.
 | | |
 |---|---|
 | ⚡ Inference | Prebuilt SGLang image — boots with **no JIT/compile**; NVFP4 weights + FP8 KV cache, Blackwell SM120 FlashInfer FP4 GEMM |
-| 🎲 Speculative decoding | DSpark drafter proposes a block of draft tokens; the 27B model **verifies the whole block in one step** (block 7 godspeed / 5 vision) |
-| 👁️ Two presets | **godspeed** (text-only, 236k ctx) ⇄ **vision** (tower on, 150k ctx) — swappable on one GPU |
-| 📊 Grafana | Auto-provisioned dashboard: dense KPI tiles + a live **DSpark win-rate** section. `make_dashboard.py` is the source; the JSON is build output |
+| 🎲 Speculative decoding | **Default: DFlash2 drafter** proposes a whole block of draft tokens per denoise step; the 27B model **verifies the block in one step** (block 8, draft window 16K). **Alternative: DSpark drafter** proposes autoregressively (block 7 text / 5 vision) |
+| 👁️ Four presets | **dflash** (default, text-only, 236k ctx) ⇄ **dflash-vision** (default, vision ON, 150k ctx) ⇄ **godspeed** (DSpark alt, text-only) ⇄ **vision** (DSpark alt) — swappable on one GPU |
+| 📊 Grafana | Auto-provisioned dashboard: dense KPI tiles + a live **speculative-decoding win-rate** section (graphs the `spec_accept_*` series either drafter exports). `make_dashboard.py` is the source; the JSON is build output |
 | 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`:9091`, LAN-reachable; a "Prometheus targets" row shows target health) |
 | 🎛️ GPU telemetry | DCGM exporter (util / mem / temp / power) alongside `sglang:` engine metrics; every tile aggregated (`sum()`/`max()`) to a single value |
 | 🔐 Gateway | Caddy **Basic-auth** on 8041 → OpenAI/Anthropic endpoints with bearer `API_KEY`; auth-off by default |
 | 🐳 GPU isolation | Rootless **Podman + NVIDIA CDI** (`--device nvidia.com/gpu=all`); boot does a read-only VRAM check — it never stops other services |
 | 🏷️ Stable API id | `qwen3.8-27b-nvfp4` via `--served-model-name` (overridable in `.env`), so `/v1/models` never leaks the `/model` path |
 | 🧠 Thinking control | Qwen3.8 thinking/reasoning knobs via SGLang `--default-chat-template-kwargs`: `reasoning_effort` (medium default / xhigh / low), `enable_thinking`, `preserve_thinking` — set in `.env` as `DEFAULT_CHAT_TEMPLATE_KWARGS` |
-| 📦 Self-contained | One `./setup.sh` (image + target + drafter weights → `./models`); share across stacks via `MODELS_ROOT` |
+| 📦 Self-contained | One `./setup.sh` (image + target + DFlash2 drafter → `./models`); the DSpark alternative adds `./setup.sh dspark` (own image + drafter); share across stacks via `MODELS_ROOT` |
 
 ---
 
@@ -59,7 +64,9 @@ This repo exposes those numbers live in the Grafana dashboard.
   also works; the scripts call `podman`, add a shim if you use Docker.)
 - **podman-compose** for the monitoring stack.
 - **Python `hf` CLI** (huggingface_hub) for weight downloads.
-- ~41 GB for the image + ~20 GB for weights.
+- ~34 GB for the default image + ~22 GB for weights (target 18 GB + DFlash2
+  drafter ~3.6 GB). The DSpark alternative adds its own 41 GB image +
+  ~2.6 GB drafter only if you also run `./setup.sh dspark`.
 
 ---
 
@@ -68,26 +75,43 @@ This repo exposes those numbers live in the Grafana dashboard.
 ```bash
 git clone <this-repo> sglang && cd sglang
 cp .env.example .env            # defaults are fine to start
-./setup.sh                      # pulls the image, downloads target + drafter
+./setup.sh                      # pulls the image, downloads target + DFlash2 drafter
 ```
 
-Weights go to `./models/` by default (self-contained). To share one store across
-multiple stacks, set `MODELS_ROOT` in `.env` and `setup.sh` symlinks into it.
+Want the **DSpark alternative** presets (`godspeed` / `vision`) too? They use
+a different SGLang image and a different drafter:
+
+```bash
+./setup.sh dspark               # pulls the DSpark image + downloads the DSpark BF16 drafter
+```
+
+Weights go to `./models/` by default (self-contained). To share one store
+across multiple stacks, set `MODELS_ROOT` in `.env` and `setup.sh` symlinks
+into it.
 
 ## 2 · Launch
 
 ```bash
-./run-sglang-godspeed.sh start      # text-only, max ctx, fastest
+./run-sglang-dflash.sh start         # default: DFlash2, text-only, max ctx, steadiest speed
 # or
-./run-sglang-vision.sh start        # vision ON, lower ctx
+./run-sglang-dflash-vision.sh start  # default: DFlash2, vision ON, lower ctx
 
-./run-sglang-godspeed.sh status     # wait until "HTTP 200 (ready)"
+./run-sglang-dflash.sh status        # wait until "HTTP 200 (ready)"
 ```
 
-Start does a read-only VRAM check and never stops other containers or services —
-if the 5090 is busy (e.g. a vLLM stack), free it manually first. Swap presets by
-`stop`-ing one, `start`-ing the other — you only have one GPU, so they're
-**swappable, not simultaneous**.
+DSpark alternative:
+
+```bash
+./run-sglang-godspeed.sh start       # DSpark, text-only
+# or
+./run-sglang-vision.sh start         # DSpark, vision ON
+```
+
+Start does a read-only VRAM check and never stops other containers or
+services — if the 5090 is busy (e.g. a vLLM stack), free it manually first.
+All four presets share one container name, so swap by `stop`-ing one,
+`start`-ing the other — you only have one GPU, so they're **swappable, not
+simultaneous**.
 
 ## 3 · Call it
 
@@ -98,73 +122,45 @@ curl -s http://localhost:8040/v1/chat/completions \
   -d '{"model":"qwen3.8-27b-nvfp4","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-The served id is `qwen3.8-27b-nvfp4` (both presets pass
+The served id is `qwen3.8-27b-nvfp4` (all presets pass
 `--served-model-name`, so `/v1/models` no longer leaks the container path
 `/model`). Override it per-stack via `SERVED_MODEL_NAME` in `.env`.
 
 ---
 
-## The two presets
+## Presets (default: DFlash2 · alternative: DSpark)
 
-| | godspeed (text-only) | vision |
-|---|---|---|
-| Vision tower | off (`--language-only`) | **on** |
-| `--context-length` | 237568 | 150000 |
-| `--mem-fraction-static` | 0.88 | 0.82 |
-| `--max-mamba-cache-size` | 8 | 8 |
-| `--speculative-dspark-block-size` | 7 | 5 |
-| Drafter | BF16 RadixArk (~2.5 GB, default, `DRAFT_MODEL_QUANTIZATION=unquant`) · NVFP4 opt-out (`modelopt_fp4`, ~1.4 GB) | same |
-| Expected decode | ~180 baseline, up to **~323 tok/s** measured burst @ `medium` (godspeed) | ~150–200 tok/s (vision) |
-| VRAM | ~31 GB | ~30 GB |
+| | **dflash** (default, text-only) | **dflash-vision** (default) | **godspeed** (DSpark alt, text-only) | **vision** (DSpark alt) |
+|---|---|---|---|---|
+| Drafter | DFlash2 z-lab (~3.6 GB BF16) | DFlash2 | DSpark BF16 RadixArk (~2.6 GB) | DSpark BF16 |
+| Image | nightly (DFlash2) | nightly | `qwen38-27b` | `qwen38-27b` |
+| `--context-length` | 237568 | 150000 | 237568 | 120000 |
+| `--mem-fraction-static` | 0.88 | 0.82 | 0.88 | 0.82 |
+| `--max-mamba-cache-size` | 8 | 8 | 8 | 8 |
+| Draft flags | block 8 + draft window 16384 | block 8 + draft window 16384 | block 7 | block 5 |
+| Expected decode | median **221** · peak **277 tok/s** | ~150–200 tok/s | median **126** · peak **~300 tok/s** (323 burst, earlier window) | ~150–200 tok/s |
+| VRAM | ~30.6 GB | ~30 GB | ~30.6 GB | ~30 GB |
 
 Shared flags: `--kv-cache-dtype fp8_e4m3`, `--attention-backend flashinfer`
 (SM120), mamba linear-attention levers (`--mamba-ssm-dtype bfloat16`,
-`--mamba-radix-cache-strategy extra_buffer_lazy`), `--max-running-requests 1`.
-Sizing and drafter knobs are `.env`-overridable: `MAX_MAMBA_CACHE_SIZE`
-(default 8), `MEM_FRACTION_STATIC`, `DSPARK_BLOCK_SIZE`,
-`DRAFT_MODEL_QUANTIZATION` (see `.env.example`).
+`--max-mamba-cache-size`), `--max-running-requests 1`. The DFlash2 presets
+pass `--mamba-radix-cache-strategy extra_buffer` (the image hard-asserts
+that `extra_buffer_lazy` is unsupported with DFLASH); the DSpark presets use
+`extra_buffer_lazy`. Sizing and drafter knobs are `.env`-overridable:
+`MAX_MAMBA_CACHE_SIZE` (default 8), `MEM_FRACTION_STATIC`,
+`DFLASH_BLOCK_SIZE`, `DRAFT_WINDOW_SIZE` (DFlash2); `DSPARK_BLOCK_SIZE`,
+`DRAFT_MODEL_QUANTIZATION` (DSpark) — see `.env.example`.
 
-**Why text-only is faster** (weights are identical): the gap is DSpark
-`block-size` 7 vs 5 — bigger accepted draft blocks per verify step — plus the
-higher `--mem-fraction-static` (0.88 vs 0.82). Lowering ctx is just the cost
-of fitting the vision tower, not a speed cause.
+**DFlash2 is the default** because it's the *steady* winner: its median
+throughput is ~1.8× the DSpark median and its draft acceptance is far more
+consistent (see the comparison below). DSpark remains the alternative when
+you want its higher burst ceiling.
 
-### Drafter dtype (BF16 default, NVFP4 opt-out)
+### DFlash2 vs DSpark (measured, same main checkpoint)
 
-The default drafter is the ~2.5 GB **BF16** RadixArk DSpark build
-(`DRAFT_MODEL_QUANTIZATION=unquant`). Community testing on the 5090
-(single-request, thinking ON) showed it drafts noticeably better than the
-~1.4 GB **NVFP4** build: accept length ~4.0 (~171 tok/s) vs ~1.7 (~93 tok/s),
-so it is the default. `./setup.sh weights` downloads it alongside the target.
-
-To opt out to the smaller NVFP4 drafter (saves ~1.1 GB of VRAM):
-
-```bash
-./setup.sh nvfp4-drafter       # downloads gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4
-# in .env:
-DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4
-DRAFT_MODEL_QUANTIZATION=modelopt_fp4
-```
-
-Restart the preset afterwards (`./run-sglang-godspeed.sh start`). The image's
-`--speculative-draft-model-quantization` accepts `unquant` (BF16, the
-default), `modelopt_fp4` (NVFP4), and the usual SGLang quant list.
-
-### DFlash 2 drafter (alternative block-diffusion presets)
-
-An alternative drafter family: **DFlash2** (`z-lab/Qwen3.8-27B-DFlash2`,
-`DFlash2DraftModel`, 5-layer block-diffusion, ~3.8 GB BF16). Instead of
-autoregressively proposing a block like DSpark, it drafts a whole block
-diffusively in one denoise step. Launched by `run-sglang-dflash.sh`
-(text-only) / `run-sglang-dflash-vision.sh` (vision on) — own knobs
-(`DFLASH_DRAFTER_SUBDIR`, `DFLASH_SGLANG_IMAGE`, `DFLASH_BLOCK_SIZE`,
-`DRAFT_WINDOW_SIZE`), so `.env` DSpark settings can never re-point it. Needs
-the newer nightly image (DFlash2DraftModel landed upstream 2026-08-19):
-`./setup.sh dflash2` downloads the drafter, presets pull the image.
-
-**Measured: DFlash2 vs DSpark godspeed** (same main checkpoint,
-`Qwen3.8-27B-NVFP4-RTX5090-LMHead4`; numbers = median / peak of the Grafana
-data source, DSpark godspeed Aug 25–30 window, DFlash2 since Aug 30 ~09:00 UTC):
+`Qwen3.8-27B-NVFP4-RTX5090-LMHead4` target in both cases; numbers =
+median / peak of the Grafana data source, DSpark godspeed Aug 25–30 window,
+DFlash2 since Aug 30 ~09:00 UTC:
 
 | | DSpark godspeed (BF16, block 7) | DFlash2 (block 8, draft window 16384) |
 |---|---|---|
@@ -175,12 +171,41 @@ data source, DSpark godspeed Aug 25–30 window, DFlash2 since Aug 30 ~09:00 UTC
 | Inter-token latency p50 | ~10 ms | ~0–4 ms |
 | VRAM (mem-fraction) | 0.88 → ~30.6 GB | 0.88 → ~30.6 GB |
 
-DFlash2 trades DSpark's ~300 tok/s burst ceiling for a **much higher floor**:
-the median throughput is ~1.8× the DSpark median and the accept-length median
-goes 2.6 → 4.0 — the win is steadiness, not peaks. The two windows are not
-equal in size (DFLASH2 sample is the shorter one, a few hours of live
-traffic vs days), so read the DFlash2 medians as "at or above DSpark"
-rather than a head-to-head benchmark.
+DFlash2 trades DSpark's ~300 tok/s burst ceiling for a **much higher
+floor**: the median throughput is ~1.8× the DSpark median and the
+accept-length median goes 2.6 → 4.0 — the win is steadiness, not peaks. The
+two windows are not equal in size (the DFlash2 sample is the shorter one, a
+few hours of live traffic vs days), so read the DFlash2 medians as "at or
+above DSpark" rather than a head-to-head benchmark.
+
+### Alternative: DSpark drafter (godspeed / vision presets)
+
+The DSpark family proposes blocks **autoregressively** (token after token),
+vs DFlash2's one-step denoise. Default dtype is the ~2.6 GB **BF16**
+RadixArk build (`DRAFT_MODEL_QUANTIZATION=unquant`) — community testing on
+the 5090 (single-request, thinking ON) showed it drafts noticeably better
+than the ~1.4 GB **NVFP4** build: accept length ~4.0 (~171 tok/s) vs ~1.7
+(~93 tok/s), so BF16 is the default. `./setup.sh dspark` downloads it
+alongside the DSpark image.
+
+To opt out to the smaller NVFP4 DSpark drafter (saves ~1.1 GB of VRAM):
+
+```bash
+./setup.sh nvfp4-drafter       # downloads gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4
+# in .env:
+DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4
+DRAFT_MODEL_QUANTIZATION=modelopt_fp4
+```
+
+Restart the preset afterwards (`./run-sglang-godspeed.sh start`). The
+DSpark image's `--speculative-draft-model-quantization` accepts `unquant`
+(BF16, the default), `modelopt_fp4` (NVFP4), and the usual SGLang quant
+list.
+
+> DFlash2 needs the newer nightly image (`DFLASH_SGLANG_IMAGE`):
+> DFlash2DraftModel only landed upstream 2026-08-19, and the DSpark image
+> (`qwen38-27b`, 2026-08-14) predates it. The two recipe images are
+> independent; each preset pulls its own.
 
 ### Mamba cache sizing (multi-session use)
 
@@ -196,12 +221,13 @@ single-shot long-context work.
 
 ### Swapping the target model (safetensors)
 
-The target model and the drafter are two **independent** mounts, wired by two
+The target model and the drafter are two **independent** mounts, wired by
 independent `.env` knob pairs:
 
 | Role | `.env` keys | mount | server flag |
 |---|---|---|---|
 | Target (main model) | `MODEL_REPO` / `MODEL_SUBDIR` | `/model` | `--model-path /model` |
+| DFlash2 drafter | `DFLASH_DRAFTER_SUBDIR` | `/model_dflash` | `--speculative-draft-model-path /model_dflash` |
 | DSpark drafter | `DRAFTER_REPO` / `DRAFTER_SUBDIR` | `/model_dspark` | `--speculative-draft-model-path /model_dspark` |
 
 So the target is not tied to the drafter (or vice versa):
@@ -213,14 +239,14 @@ So the target is not tied to the drafter (or vice versa):
 MODEL_REPO=<owner>/<repo>
 MODEL_SUBDIR=<subdir>
 ./setup.sh weights           # downloads the configured target
-./run-sglang-godspeed.sh start
+./run-sglang-dflash.sh start
 ```
 
 Rules of thumb for a drop-in target:
 - **Keep the architecture family.** The mamba/Gated-DeltaNet levers and the
-  DSpark numbers are tuned for this exact hybrid arch. A different model
-  (Llama, DeepSeek, …) breaks the assumptions: the drafter no longer applies
-  and the mamba flags stop meaning anything.
+  drafter numbers are tuned for this exact hybrid arch. A different model
+  (Llama, DeepSeek, …) breaks the assumptions: the drafter no longer
+  applies and the mamba flags stop meaning anything.
 - **Keep the drafter paired with the base it was distilled from.** A
   moderate fine-tune or re-quant of the *same* base keeps draft
   acceptance high. A heavily diverged fine-tune still runs, but the target's
@@ -228,22 +254,23 @@ Rules of thumb for a drop-in target:
   toward non-speculative. Recheck the `spec-accept-length` panel after any
   target swap.
 - A fully different base model needs a matching drafter rebuild too (or run
-  without DSpark and drop `--speculative-algorithm DSPARK`).
+  without speculation and drop the `--speculative-algorithm` flag).
 
 ### GGUF is not a drop-in replacement
 
 SGLang itself does have a GGUF path (`--load-format gguf` /
-`--quantization gguf`, CUDA-supported in the `lmsysorg/sglang` image — a wide
-weight-type list: Q4/Q5/Q8, K-quants, IQ series, unquant). But on **this**
-stack it is *not* a drop-in replacement for the NVFP4 build:
+`--quantization gguf`, CUDA-supported in the `lmsysorg/sglang` image — a
+wide weight-type list: Q4/Q5/Q8, K-quants, IQ series, unquant). But on
+**this** stack it is *not* a drop-in replacement for the NVFP4 build:
 
 - The speed win comes from the coordinated pipeline — custom Gated-DeltaNet /
-  mamba kernels plus DSpark tuned to the NVFP4 target. A GGUF build dequantizes
-  to plain weight tensors; there is no guarantee the Gated-DeltaNet kernels
-  accept GGUF-dequantized weights, and that is the most likely break point.
-- `--speculative-dspark-block-size` and the measured tok/s were tuned against
-  the NVFP4 target's distribution — a GGUF target needs re-tuning, not just
-  swapping.
+  mamba kernels plus the drafters tuned to the NVFP4 target. A GGUF build
+  dequantizes to plain weight tensors; there is no guarantee the Gated-DeltaNet
+  kernels accept GGUF-dequantized weights, and that is the most likely break
+  point.
+- `--speculative-dflash-block-size` / `--speculative-dspark-block-size` and
+  the measured tok/s were tuned against the NVFP4 target's distribution — a
+  GGUF target needs re-tuning, not just swapping.
 - qwen3-arch GGUF loading has had known support gaps upstream
   (sgl-project/sglang #6281); verify against your image revision before
   spending a cold start on it.
@@ -284,15 +311,17 @@ deliberately chosen here as the out-of-the-box trade-off.
 > `"enable_thinking":false` to skip the trace entirely). Or override per-request
 > with no restart — see below.
 
-> **Measured at medium (the default).** With `reasoning_effort: medium` this
-> stack peaks at **323 tok/s** on a live burst. The DSpark drafter is still
-> what drives it — the live Prometheus source shows the drafter accepting ~3.3
-> draft tokens/step at a ~0.33 accept rate (the same `spec_accept_*` series the
-> dashboard's DSpark section graphs). So the out-of-the-box default is not just
-> a good accuracy/speed balance — it's also the fastest thing you get without
-> dropping to `low`, and it still has headroom to reach for `xhigh` when a
-> task needs depth. (A rolling `max_over_time(gen_throughput[1h])` sits a bit
-> lower than the burst peak because it averages idle between requests.)
+> **Measured at medium (the default).** With `reasoning_effort: medium` the
+> default DFlash2 recipe peaks at **277 tok/s** on a live burst and holds a
+> **221 tok/s median** across its window — the drafter accepts ~4.0 draft
+> tokens/step at a ~0.43 accept rate (the same `spec_accept_*` series the
+> dashboard's speculative-decoding section graphs). The DSpark alternative
+> peaked a touch higher (323 tok/s burst in the earlier window) but ran
+> ~126 tok/s median, so the out-of-the-box default is not just a good
+> accuracy/speed balance — it's the steadiest fast thing you get without
+> dropping to `low`, with headroom to reach for `xhigh` when a task needs
+> depth. (A rolling `max_over_time(gen_throughput[1h])` sits a bit lower
+> than the burst peak because it averages idle between requests.)
 
 Other `.env` examples:
 
@@ -308,7 +337,7 @@ wins over the server default:
 
 ```bash
 curl -s http://localhost:8040/v1/chat/completions \
-  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
   -d '{"model":"qwen3.8-27b-nvfp4","messages":[{"role":"user","content":"hi"}],
        "chat_template_kwargs":{"reasoning_effort":"xhigh"}}'
 ```
@@ -318,7 +347,10 @@ curl -s http://localhost:8040/v1/chat/completions \
 ## Monitoring (optional)
 
 Prometheus + Grafana + Caddy + a GPU exporter, all isolated (own ports/network/
-volumes). A dedicated **DSpark section** shows live accepted-draft rate.
+volumes). A dedicated **speculative-decoding section** shows live
+accepted-draft rate — it graphs the `sglang:spec_*` series, so it tracks
+*whichever* drafter is running (the section's generated title still says
+"DSpark"; it's a label, the series are drafter-agnostic).
 
 ```bash
 ./monitor.sh up           # start the monitoring stack
@@ -327,14 +359,16 @@ volumes). A dedicated **DSpark section** shows live accepted-draft rate.
 ```
 
 Dashboard: `http://localhost:8042` → folder *sglang* → "SGLang — Qwen3.8-27B
-(DSpark, RTX5090)". Watch `spec_accept_length` / `spec_accept_rate` to see the
-drafter win-rate that drives your throughput.
+(RTX5090)" (the generated title currently reads "DSpark, RTX5090"). Watch
+`spec_accept_length` / `spec_accept_rate` to see the drafter win-rate that
+drives your throughput.
 
 ### Live proof (measured via the dashboard's own data source)
 
 Every value below was read through the same Prometheus (port 9091) the
 Grafana panels query, on 2026-08-20 20:11 CEST with `sglang-qwen38` up
-33 min on the godspeed preset, idle after a few smoke-test requests:
+33 min on the DSpark godspeed preset (the default back then), idle after a
+few smoke-test requests:
 
 | KPI (Grafana tile) | Query the tile runs | Measured |
 |---|---|---|
@@ -355,20 +389,26 @@ metrics with multiple label sets (`is_streaming`, `mode`, `phase` — and one
 per historical `model_name`), so the dashboard always aggregates before
 displaying; a raw gauge would otherwise stack one value per series.
 
-> **Later snapshot — medium default, 2026-08-20 ~21:00 CEST.** After the
-> `medium` default went live (server boot ~20:45), the peak generation rate
-> climbed to **323 tok/s** on a burst (the table above's `gen_throughput`
-> max is the earlier, pre-restart idle snapshot). The drafter is still the
-> driver: `sum(sglang:spec_accept_length)` ≈ 3.3 tokens/step, `spec_accept_rate`
-> ≈ 0.33 — the same series the DSpark section graphs.
+> **Later snapshot — medium default, 2026-08-20 ~21:00 CEST (DSpark era).**
+> After the `medium` default went live (server boot ~20:45), the peak
+> generation rate climbed to **323 tok/s** on a burst (the table above's
+> `gen_throughput` max is the earlier, pre-restart idle snapshot). The
+> drafter is still the driver: `sum(sglang:spec_accept_length)` ≈ 3.3
+> tokens/step, `spec_accept_rate` ≈ 0.33 — the same series the
+> speculative-decoding section graphs. (Under the current DFlash2 default,
+> the corresponding live numbers are the 221 median / 277 peak / ~4.0 /
+> ~0.43 above.)
 
 ---
 
 ## Configuration (`.env`)
 
-Everything is overridable in `.env` — no user-specific paths or usernames are
-hardcoded. Common knobs: `SGGLANG_IMAGE`, `MODEL_REPO`/`DRAFTER_REPO`,
-`MODEL_SUBDIR`/`DRAFTER_SUBDIR`, `HOST_PORT`, `API_KEY`, `MODELS_ROOT`,
+Everything is overridable in `.env` — no user-specific paths or usernames
+are hardcoded. Common knobs: `DFLASH_SGLANG_IMAGE` (default-recipe image),
+`MODEL_REPO`/`DFLASH_DRAFTER_SUBDIR` (default recipe), `SGGLANG_IMAGE` /
+`DRAFTER_REPO`/`DRAFTER_SUBDIR` / `DRAFT_MODEL_QUANTIZATION` /
+`DSPARK_BLOCK_SIZE` (DSpark alternative), `DFLASH_BLOCK_SIZE` /
+`DRAFT_WINDOW_SIZE`, `HOST_PORT`, `API_KEY`, `MODELS_ROOT`,
 `SERVED_MODEL_NAME` (id exposed at `/v1/models`; default
 `qwen3.8-27b-nvfp4`), `DEFAULT_CHAT_TEMPLATE_KWARGS` (Qwen3.8 thinking knobs;
 default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
@@ -378,23 +418,26 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 
 ## Troubleshooting / verify before you trust
 
-- **Speed numbers**: ~260 tok/s is community-reported; the model card
-  verifies ~180. The live **`medium` default measured a 323 tok/s burst peak**
-  (see the Thinking section + the "Later snapshot" callout). Re-measure after
-  boot (`status` + a timed decode) — a rolling 1h `gen_throughput` max sits
-  below the burst because it averages idle time between requests.
-- **OOM at boot** (vision preset): lower `--mem-fraction-static` to 0.80 and
-  `--context-length` to ~120000.
-- **DSpark vs MTP**: DSpark is the faster drop-in on this hybrid
-  Gated-DeltaNet model (the in-checkpoint MTP head is the older K=1 path). No
-  vision penalty with DSpark.
-- **Metrics target down**: normal until a SGLang server is running; it flips up
-  after `./run-sglang-*.sh start` reaches ready.
+- **Speed numbers**: the default DFlash2 recipe measured **221 tok/s median /
+  277 peak** (see the comparison table above); the DSpark alternative peaks
+  ~300–323 but runs ~126 median. Re-measure after boot (`status` + a timed
+  decode) — a rolling 1h `gen_throughput` max sits below the burst because
+  it averages idle time between requests.
+- **OOM at boot** (vision presets): lower `--mem-fraction-static` to 0.80
+  and `--context-length` to ~120000 (dflash-vision); on DFlash2 text-only
+  you can also lower `DRAFT_WINDOW_SIZE` — it's the one knob that bounds the
+  DFlash2 draft KV pool.
+- **DFlash2 vs DSpark vs MTP**: DFlash2 is the default (steady, high floor);
+  DSpark is the alternative (higher burst ceiling); the in-checkpoint MTP
+  head is the older K=1 path and is not competitive on this hybrid
+  Gated-DeltaNet model. No vision penalty with either drafter.
+- **Metrics target down**: normal until a SGLang server is running; it flips
+  up after `./run-sglang-*.sh start` reaches ready.
 - **Prefill degrades after hours of mixed load**: community-observed — after
   ~4.5 h of multi-tenant use, short-ctx prefill slowed ~2.3× (T32 3.3 s →
   7.6 s) while short-ctx decode stayed fine; a plain container restart (same
   args, ~3 min cold start) fully restored baseline. If prefill TTFT creeps up
-  on a long-running box, `./run-sglang-godspeed.sh start` (replaces the
+  on a long-running box, `./run-sglang-dflash.sh start` (replaces the
   container) is the cheap first fix before suspecting the workload.
 
 ## Layout
@@ -402,11 +445,11 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 ```
 sglang/
 ├── .env.example               # copy to .env (defaults work)
-├── setup.sh                   # pull image + download target + drafter (+ dflash2)
-├── run-sglang-godspeed.sh     # DSpark preset, text-only (start|stop|logs|status)
-├── run-sglang-vision.sh       # DSpark preset, vision ON
-├── run-sglang-dflash.sh       # DFlash2 preset, text-only (block-diffusion drafter)
-├── run-sglang-dflash-vision.sh# DFlash2 preset, vision ON
+├── setup.sh                   # pull image + download target + DFlash2 drafter (+ dspark alternative)
+├── run-sglang-dflash.sh       # DEFAULT preset, text-only (start|stop|logs|status)
+├── run-sglang-dflash-vision.sh# DEFAULT preset, vision ON
+├── run-sglang-godspeed.sh     # DSpark alternative, text-only
+├── run-sglang-vision.sh       # DSpark alternative, vision ON
 ├── monitor.sh                 # monitoring up|down|status|dashboard
 ├── docker-compose.yml         # caddy/prometheus/grafana/dcgm (isolated)
 ├── caddy/Caddyfile            # Basic-auth gateway on 8041

@@ -1,34 +1,25 @@
 #!/usr/bin/env bash
-# run-sglang-dflash.sh — DFLASH2 recipe (DEFAULT): TEXT-ONLY + DFlash 2 drafter, full ctx.
-# SGLang + NVFP4 (LMHead4) + z-lab DFlash2 block-diffusion drafter + flashinfer SM120.
-# This is the DEFAULT recipe (the steady high-floor winner). The DSpark
-# alternative is run-sglang-godspeed.sh / run-sglang-vision.sh.
+# run-sglang-dflash-vision.sh — DFLASH2 + VISION (DEFAULT): DFlash2 drafter, vision tower LIVE,
+# ~150k ctx. Same SGLang + NVFP4 (LMHead4) + z-lab DFlash2 stack as
+# run-sglang-dflash.sh, but the vision tower stays ON (no --language-only) and
+# VRAM is rebalanced so BF16 vision encoder + DFlash2 drafter both fit:
+#   - --context-length 150000    (same as the DSpark vision preset)
+#   - --mem-fraction-static 0.82 (same as the DSpark vision preset)
+#   - --mm-feature-transport cpu (vision ON; avoids WSL2 CUDA-IPC quirk)
 #
-# Same target model as godspeed, but its own SGLang image (newer nightly —
-# see DFLASH_SGLANG_IMAGE below) and the DSpark drafter is
-# replaced by z-lab/Qwen3.8-27B-DFlash2 (5-layer BF16 block-diffusion drafter,
-# ~2 GB, drafts a whole block of tokens per verify step):
-#   - --speculative-algorithm DFLASH   (DSPARK scripts use DSPARK)
-#   - --speculative-dflash-block-size  verify window = N draft tokens (default 8,
-#                                      the z-lab quick-start value)
-#   - --mamba-radix-cache-strategy extra_buffer  (NOT extra_buffer_lazy: the
-#                                      image hard-asserts extra_buffer_lazy
-#                                      unsupported with DFLASH)
-#   - --context-length 237568          (same as godspeed): the DFlash2 draft
-#                                      pool is bounded by --speculative-draft-window-size
-#                                      (default 16384), NOT by the ctx, so the
-#                                      full 236k pool is kept; on a 32 GB 5090
-#                                      that's the same VRAM budget DSpark fits.
+# DFLASH constraints carried over from the text-only DFLASH script:
+#   - --mamba-radix-cache-strategy extra_buffer (NOT extra_buffer_lazy:
+#     the image hard-asserts extra_buffer_lazy unsupported with DFLASH)
+#   - the DFlash2 draft pool is bounded by --speculative-draft-window-size
+#     (default 16384), not by ctx — so ctx stays at the DSpark vision value.
 #
-# The DSpark scripts (run-sglang-godspeed.sh / run-sglang-vision.sh) are
-# UNTOUCHED. This script uses its own drafter knob (DFLASH_DRAFTER_SUBDIR,
-# default Qwen3.8-27B-DFlash2), so a .env DRAFTER_SUBDIR for DSpark can never
-# re-point this script. It shares CONTAINER_NAME=sglang-qwen38, so starting it
-# replaces a running DSpark server (swappable, one GPU).
+# DSpark launchers are UNTOUCHED. Own drafter knob DFLASH_DRAFTER_SUBDIR
+# (default Qwen3.8-27B-DFlash2); shares CONTAINER_NAME=sglang-qwen38, so it
+# replaces a running DSpark/DFLASH server (one GPU, swappable not simultaneous).
 #
-# Usage:  ./run-sglang-dflash.sh [start|stop|logs|status]
+# Usage:  ./run-sglang-dflash-vision.sh [start|stop|logs|status]
 # API:     http://localhost:${HOST_PORT}/v1   (also /anthropic)
-# Weights:  ./setup.sh dflash2   (downloads the DFlash2 drafter)
+# Weights:  ./setup.sh dflash2
 set -uo pipefail
 
 DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,40 +30,21 @@ DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # exists upstream from 2026-08-19 (#35371), the quantized-lm_head selector
 # from 2026-08-20 (#35496) — the DSpark image (qwen38-27b, commit c4271c3f,
 # 2026-08-14) predates both and crashes at model load with this drafter.
-# Own knob: SGGLANG_IMAGE (.env, DSpark) is ignored here on purpose, so the
-# DSpark launchers keep their own image untouched. Override in .env if a
-# newer nightly lands: DFLASH_SGLANG_IMAGE=lmsysorg/sglang:nightly-dev-cu13-...
+# Own knob: SGGLANG_IMAGE (.env, DSpark) is ignored here on purpose.
 DFLASH_SGLANG_IMAGE="${DFLASH_SGLANG_IMAGE:-lmsysorg/sglang:nightly-dev-cu13-20260830-a1fe4e30}"
 CONTAINER="${CONTAINER_NAME:-sglang-qwen38}"
 HOST_PORT="${HOST_PORT:-8040}"
 CONTAINER_PORT="${CONTAINER_PORT:-30000}"
 MODEL_SUBDIR="${MODEL_SUBDIR:-Qwen3.8-27B-NVFP4-RTX5090-LMHead4}"
-# DFlash2 drafter (z-lab). Own knob: DRAFTER_SUBDIR (.env, DSpark) is ignored
-# here on purpose, so the DSpark launchers keep their own drafter untouched.
 DFLASH_DRAFTER_SUBDIR="${DFLASH_DRAFTER_SUBDIR:-Qwen3.8-27B-DFlash2}"
 API_KEY="${API_KEY:-}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3.8-27b-nvfp4}"
-# Qwen3.8 chat-template knobs (JSON): reasoning_effort xhigh/medium/low,
-# enable_thinking, preserve_thinking. Unset -> medium (balances accuracy/speed).
 DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 [ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
-# Sizing + drafter knobs (overridable in .env; see .env.example):
-#   MAX_MAMBA_CACHE_SIZE     mamba slot count (default 8, same as DSpark).
-#   CONTEXT_LENGTH           target ctx (default 237568, same as godspeed):
-#                            the DFlash2 draft pool is bounded by
-#                            --speculative-draft-window-size, not by ctx.
-#   MEM_FRACTION_STATIC      target-model VRAM fraction (default 0.88 —
-#                            ~0.65 GB lower than the old 0.90 so the 32 GB
-#                            5090 keeps OOM headroom; the boot-time
-#                            startup_available_gpu_memory was ~1.16 GB at 0.90).
-#   DFLASH_BLOCK_SIZE        verify window / draft tokens per step (default 8).
-#   DRAFT_WINDOW_SIZE        draft target-token window — the one knob that
-#                            bounds the DFlash2 draft KV pool (default 16384).
-#                            OOM at boot: lower it and/or MEM_FRACTION_STATIC;
-#                            poor accept length on very long prompts: raise it.
+# DFLASH vision knobs (overridable in .env):
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
-CONTEXT_LENGTH="${CONTEXT_LENGTH:-237568}"
-MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.88}"
+CONTEXT_LENGTH="${CONTEXT_LENGTH:-150000}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.82}"
 DFLASH_BLOCK_SIZE="${DFLASH_BLOCK_SIZE:-8}"
 DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-16384}"
 
@@ -91,22 +63,18 @@ start() {
   podman image exists "$DFLASH_SGLANG_IMAGE" || {
     echo "ERROR: image $DFLASH_SGLANG_IMAGE missing — run: podman pull $DFLASH_SGLANG_IMAGE"; exit 1; }
 
-  # GPU check (read-only): never stop or kill other containers/services — if
-  # the 5090 is still busy (e.g. the DSpark stack), free it manually first.
   local memfree
   memfree=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
   echo "[gpu] free MiB: ${memfree:-?}"
   if [ -n "${memfree:-}" ] && [ "$memfree" -lt 20000 ] 2>/dev/null; then
-    echo "WARNING: only ${memfree} MiB free — SGLang needs ~30 GB on the 5090. Stop the other server first."
+    echo "WARNING: only ${memfree} MiB free — SGLang needs ~30 GB on the 5090. Free the GPU manually first."
   fi
 
-  echo "Starting SGLang (DFLASH2, text-only) -> http://localhost:${HOST_PORT}/v1"
+  echo "Starting SGLang (DFLASH2 + VISION) -> http://localhost:${HOST_PORT}/v1"
   echo "  target : $MODEL_HOST"
   echo "  drafter: $DRAFTER_HOST (block $DFLASH_BLOCK_SIZE, draft window $DRAFT_WINDOW_SIZE)"
-  echo "  ctx    : $CONTEXT_LENGTH (same budget as godspeed; the DFlash2 draft pool is bounded by the draft window, not the ctx)"
+  echo "  ctx    : $CONTEXT_LENGTH (vision ON; same budget as the DSpark vision preset)"
   podman rm -f "$CONTAINER" >/dev/null 2>&1 || true
-  # Join the monitor network so Prometheus (docker-compose) can scrape /metrics
-  # as sglang-qwen38:30000. Idempotent: podman ignores an already-attached net.
   podman network inspect sglang_monitor >/dev/null 2>&1 || podman network create sglang_monitor >/dev/null 2>&1 || true
   podman run -d \
     --name "$CONTAINER" --replace \
@@ -147,14 +115,13 @@ start() {
       --default-chat-template-kwargs "$DEFAULT_CHAT_TEMPLATE_KWARGS" \
       --tool-call-parser qwen3_coder \
       --mm-feature-transport cpu \
-      --language-only \
       --enable-metrics \
     2>&1 | tail -20
 
-  echo "Container started. First boot loads ~18 GB target + ~2 GB DFlash2 drafter."
+  echo "Container started. First boot loads ~18 GB + vision tower + ~2 GB DFlash2 drafter."
   echo "  If it OOMs at boot: lower DRAFT_WINDOW_SIZE / CONTEXT_LENGTH, or drop"
-  echo "  MEM_FRACTION_STATIC to 0.85, then re-run (all .env-overridable)."
-  echo "Watch readiness: ./run-sglang-dflash.sh status"
+  echo "  MEM_FRACTION_STATIC to 0.80, then re-run (all .env-overridable)."
+  echo "Watch readiness: ./run-sglang-dflash-vision.sh status"
 }
 
 stop()  { podman rm -f "$CONTAINER" >/dev/null 2>&1 && echo "stopped" || echo "not running"; }

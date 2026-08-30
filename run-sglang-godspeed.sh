@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# run-sglang-godspeed.sh — GODSPEED recipe: TEXT-ONLY, ~236k ctx, ~180-260 tok/s.
+# run-sglang-godspeed.sh — GODSPEED recipe (DSpark alternative): TEXT-ONLY, ~236k ctx.
 # SGLang + NVFP4 (LMHead4) + DSpark drafter + flashinfer SM120 FP4 GEMM on the RTX 5090.
+# This is the DSpark ALTERNATIVE — higher burst ceiling, lower floor than the
+# default DFlash2 recipe (run-sglang-dflash.sh).
 #
 # This is the fast ceiling from HF discussion #11 (cosmicnag) + the official SGLang
 # Qwen3.8-27B RTX-5090 cell (flashinfer backend, mamba state levers).
