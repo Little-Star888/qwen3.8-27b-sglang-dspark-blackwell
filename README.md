@@ -16,6 +16,8 @@ dashboard.
 That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
 `/anthropic`.
 
+[What changed, version by version: `CHANGELOG.md`](CHANGELOG.md).
+
 ---
 
 ## Key facts
@@ -445,6 +447,7 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 ```
 sglang/
 ├── .env.example               # copy to .env (defaults work)
+├── CHANGELOG.md               # user-facing changes, newest first
 ├── setup.sh                   # pull image + download target + DFlash2 drafter (+ dspark alternative)
 ├── run-sglang-dflash.sh       # DEFAULT preset, text-only (start|stop|logs|status)
 ├── run-sglang-dflash-vision.sh# DEFAULT preset, vision ON
