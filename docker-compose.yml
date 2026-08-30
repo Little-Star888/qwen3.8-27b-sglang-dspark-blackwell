@@ -1,8 +1,10 @@
 # docker-compose.yml — SGLang MONITORING stack (isolated from the vLLM stack).
 #
 # This compose file only runs the *monitoring* services. The SGLang inference
-# server itself is started separately by run-sglang-godspeed.sh /
-# run-sglang-vision.sh (standalone `podman run`, GPU via nvidia CDI).
+# server itself is started separately by the run scripts (default:
+# run-sglang-dflash.sh / run-sglang-dflash-vision.sh, alternative:
+# run-sglang-godspeed.sh / run-sglang-vision.sh; standalone `podman run`,
+# GPU via nvidia CDI).
 #
 # For Prometheus to scrape the live server, the SGLang container joins the
 # `sglang_monitor` network (the run scripts add `--network sglang_monitor`),
@@ -13,7 +15,7 @@
 #   SGLang API (run script)  -> 8040  (HOST_PORT)
 #   caddy gateway (SGLang)   -> 8041  (GATEWAY_HOST_PORT)
 #   grafana (SGLang)         -> 8042  (GRAFANA_HOST_PORT)
-#   prometheus (SGLang)      -> 127.0.0.1:9091 (local only)
+#   prometheus (SGLang)      -> 9091 (PROMETHEUS_HOST_PORT, LAN-reachable)
 #
 # Bring up:  podman-compose -f docker-compose.yml up -d
 # Stop:       podman-compose -f docker-compose.yml down
@@ -45,7 +47,7 @@ services:
   # Scrapes sglang-qwen38:30000/metrics and dcgm-sglang:9400 (see
   # prometheus/prometheus.yml). UI bound to 127.0.0.1:9091 only. 30-day retention.
   prometheus:
-    image: prom/prometheus:v3.13.2
+    image: prom/prometheus:v3.14.0
     container_name: prometheus-sglang
     restart: "always"
     command:
@@ -53,8 +55,11 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
       - --web.enable-lifecycle
+    # Exposed on the LAN (0.0.0.0) so the UI is reachable from other machines
+    # on the network; it still scrapes only targets inside the sglang_monitor
+    # network. 30-day retention.
     ports:
-      - "127.0.0.1:${PROMETHEUS_HOST_PORT:-9091}:9090"
+      - "0.0.0.0:${PROMETHEUS_HOST_PORT:-9091}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data_sglang:/prometheus
@@ -65,7 +70,7 @@ services:
   # SGLang dashboard auto-provisioned from ./grafana/dashboards/ (folder "sglang").
   # Login: admin / GRAFANA_ADMIN_PASSWORD from .env (applied on first DB init).
   grafana:
-    image: grafana/grafana:11.1.4
+    image: grafana/grafana:13.2.0
     container_name: grafana-sglang
     restart: "always"
     ports:
