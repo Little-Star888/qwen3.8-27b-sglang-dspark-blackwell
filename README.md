@@ -488,6 +488,55 @@ default `{"reasoning_effort":"medium"}`), `HF_HUB_ACCESS_TOKEN`,
 
 ---
 
+## Hermes Agent (client) setup
+
+Pointing [Hermes Agent](https://hermes-agent.nousresearch.com) at this
+endpoint works, but only if the client's context belief matches the
+**physical pool** above — otherwise long sessions OOM mid-decode
+(server aborts with `Out of memory even after retracting all other
+requests`). Two settings in `~/.hermes/config.yaml` fix it; both take
+effect in the *next* session.
+
+**1. Provider entry** (`custom_providers`):
+
+```yaml
+- name: qwen3.8-27b-nvfp4
+  base_url: http://0.0.0.0:8040/v1
+  model: qwen3.8-27b-nvfp4
+  models:
+    qwen3.8-27b-nvfp4:
+      # tracks sglang:max_total_num_tokens from http://127.0.0.1:8040/metrics
+      # (122,069 @ the 128K default, 2026-08-30 boot)
+      context_length: 120000
+  models_discovered: true
+```
+
+**2. Output budget** (`model` block): `max_tokens: 16384` (not 32768).
+Output adds directly to the input against the pool: worst case
+`context + max_tokens` must stay under `max_total_num_tokens`.
+
+**Rules of thumb:**
+
+- **`context_length` tracks the pool, not the flag.** After every
+  server restart, read `sglang:max_total_num_tokens` from `/metrics`
+  and set `context_length` just under it (120000 for the 122K pool;
+  98000 if you're on the legacy 0.88 pool). Too high = compression
+  only fires near ~50% of the *believed* window — past where the pool
+  actually exhausts, which is exactly the OOM symptom above.
+- **Edit the YAML directly, not `hermes config set`.** The model id
+  `qwen3.8-27b-nvfp4` contains dots, which the CLI's dotted-key
+  parser mis-navigates into a garbage nested key the resolver never
+  reads; and the CLI's save path strips YAML comments. Targeted
+  text edits keep both the key shape and the comments.
+- **New sessions only.** Config caps apply when a session starts; a
+  running session keeps its old value — start a fresh one after
+  changing these.
+- **Know when compaction fires.** With `context_length: 120000` and
+  `max_tokens: 16384`, the effective input budget is 103,616 and the
+  default 50% trigger floors at the 64K minimum — so auto-compaction
+  kicks in at ~64K, well inside the 122K pool, and streams no longer
+  die mid-response.
+
 ## Troubleshooting / verify before you trust
 
 - **Speed numbers**: the default DFlash2 recipe measured **221 tok/s median /
