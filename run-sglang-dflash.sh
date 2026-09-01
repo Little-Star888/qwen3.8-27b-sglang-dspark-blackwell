@@ -77,6 +77,9 @@ CONTEXT_LENGTH="${CONTEXT_LENGTH:-237568}"
 MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.91}"
 DFLASH_BLOCK_SIZE="${DFLASH_BLOCK_SIZE:-8}"
 DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-16384}"
+# fp8: drafter weights online-quantized at load (3.67 GB -> ~1.8 GB), measured
+# acceptance-identical; the freed ~1.8 GB is what funds DRAFT_WINDOW_SIZE=16384.
+DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-unquant}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
 DRAFTER_HOST="$DIR/models/$DFLASH_DRAFTER_SUBDIR"
@@ -144,7 +147,7 @@ start() {
       --speculative-draft-model-path /model_dflash \
       --speculative-dflash-block-size "$DFLASH_BLOCK_SIZE" \
       --speculative-draft-window-size "$DRAFT_WINDOW_SIZE" \
-      --speculative-draft-model-quantization unquant \
+      --speculative-draft-model-quantization "$DRAFT_MODEL_QUANTIZATION" \
       --reasoning-parser qwen3 \
       --default-chat-template-kwargs "$DEFAULT_CHAT_TEMPLATE_KWARGS" \
       --tool-call-parser qwen3_coder \
