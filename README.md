@@ -328,6 +328,74 @@ Rules of thumb for a drop-in target:
 - A fully different base model needs a matching drafter rebuild too (or run
   without speculation and drop the `--speculative-algorithm` flag).
 
+### Documented variant: QUASAR QAT target (live default on this box)
+
+`QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4` is a **quantization-aware-training**
+build: instead of rounding weights to NVFP4 after the fact (PTQ), the model
+is *trained* under quantization, distilled from the frozen BF16 original as
+teacher. It is the most aggressive public NVFP4 quant of Qwen3.8-27B —
+**496 of 496 linear layers** W4A4 (self-attention, gated delta-net, MLPs),
+where the gittensor builds keep the attention/delta-net paths at higher
+precision. 19.7 GB checkpoint, ~1 GB heavier than LMHead4.
+
+| | gittensor default (LMHead4) | **QUASAR QAT** |
+|---|---|---|
+| Method | PTQ (ModelOpt): linears + lm_head NVFP4 | QAT: every linear W4A4, all 496 |
+| Size | 18.77 GB | 19.7 GB |
+| Quality | smoke 42/60 (n=20/task; card wording: "no degradation, not an improvement") | **GPQA-Diamond 0.9091 vs 0.9141 BF16 original (−0.5%)**, AIME 1.0000 — smallest public NVFP4 checkpoint with the best-documented quality |
+| MTP head | retained (vLLM speculation path works) | — |
+| SGLang loading | auto (config.json) | auto (compressed-tensors, no flags) |
+
+**Why run it:** the quality floor. A 0.5% GPQA delta at 19.7 GB is the best
+documented quality/size trade of the three public NVFP4 builds (the card's
+comparison puts unsloth at −2.0% and Inferact at −3.8%).
+
+**Speed (measured on this box, 2026-09-01, live setup QUASAR + DFlash2,
+window 16384, mfs 0.90, ctx 237,568):**
+
+- short-context decode: **~260 tok/s peak**
+- long-context request: **~86 tok/s** — the drafter's acceptance collapses
+  on long ctx (live `spec_accept_length` ≈ 3.08 vs the ~4.0 median), so this
+  is the AR baseline. The drafter, not the target, is the bottleneck there.
+- VRAM: 18.5 GB weights + 3.3 GB KV (108,740 tokens) + 1.4 GB graphs
+  ≈ 31.5/32.6 GB
+
+**Switching to it:**
+
+```bash
+# .env
+MODEL_REPO=QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4
+MODEL_SUBDIR=Qwen3.8-27B-QUASAR-NVFP4
+./setup.sh weights             # only if the copy is not in ./models yet
+./run-sglang-dflash.sh start
+```
+
+No SGLang flag changes: the target's quant method is read from
+`config.json` (compressed-tensors). The copy is already on this box
+(`./models/Qwen3.8-27B-QUASAR-NVFP4`, 20 GB); the live `.env` pins it.
+Because the weights are ~1 GB heavier than LMHead4, re-verify
+`sglang:max_total_num_tokens` after boot — the KV pool shrinks by roughly
+that amount.
+
+**Drafter pairing:**
+
+- **DFlash2 (default)** — the proven live pairing; the README's measured
+  DFlash2 numbers (221 median / 277 peak) were taken against the LMHead4
+  target, so recheck the `spec_accept_length` panel after any target swap
+  before comparing speed across targets.
+- **DSpark v2** — trained against the gittensor parent's logits, so its
+  published acceptance (181.7 tok/s with LMHead4, τ 6.78 on code) does not
+  automatically transfer to QUASAR. No local data point on this box;
+  verify with the accept-length panel before expecting the card's numbers.
+
+**When to prefer the gittensor builds instead:** raw decode speed. At
+concurrency 1 the 5090 is weight-bandwidth-bound, and the LMHead4 card
+measures +8.4% AR / +15% DSpark decode from quantizing `lm_head` (17.92 GB
+main checkpoint supersedes LMHead4: same + NVFP4 lm_head and MTP removed).
+If your workload is decode-bound short-context and you run the documented
+DSpark-v2 pairing, the gittensor main build is the speed pick; QUASAR is
+the quality-floor pick.
+
 ### GGUF is not a drop-in replacement
 
 SGLang itself does have a GGUF path (`--load-format gguf` /
