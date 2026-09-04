@@ -11,14 +11,18 @@
 #   - --speculative-algorithm DFLASH   (DSPARK scripts use DSPARK)
 #   - --speculative-dflash-block-size  verify window = N draft tokens (default 8,
 #                                      the z-lab quick-start value)
-#   - --mamba-radix-cache-strategy extra_buffer  (NOT extra_buffer_lazy: the
-#                                      image hard-asserts extra_buffer_lazy
-#                                      unsupported with DFLASH)
-#   - --context-length 237568          (same as godspeed): the DFlash2 draft
-#                                      pool is bounded by --speculative-draft-window-size
-#                                      (default 16384), NOT by the ctx, so the
-#                                      full 236k pool is kept; on a 32 GB 5090
-#                                      that's the same VRAM budget DSpark fits.
+#   - --mamba-radix-cache-strategy extra_buffer_lazy (default; the A/B on this
+#                                      box measured +5,863-token pool over eager
+#                                      at no quality cost — see README
+#                                      "Context pool"). The old "hard-asserts
+#                                      unsupported" claim was wrong: the
+#                                      2026-08-30 image supports it fine with
+#                                      DFLASH.
+#   - --context-length 80000          (matches the measured KV pool on this
+#                                      5090 — see README "Context pool"): the
+#                                      DFlash2 draft pool is bounded by
+#                                      --speculative-draft-window-size
+#                                      (default 8192), NOT by the ctx.
 #
 # The DSpark scripts (run-sglang-godspeed.sh / run-sglang-vision.sh) are
 # UNTOUCHED. This script uses its own drafter knob (DFLASH_DRAFTER_SUBDIR,
@@ -60,25 +64,28 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 [ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
 # Sizing + drafter knobs (overridable in .env; see .env.example):
 #   MAX_MAMBA_CACHE_SIZE     mamba slot count (default 8, same as DSpark).
-#   CONTEXT_LENGTH           target ctx (default 237568, same as godspeed):
+#   CONTEXT_LENGTH           target ctx (default 80000, matches the measured KV
+#                            pool on this 5090 — see README "Context pool"):
 #                            the DFlash2 draft pool is bounded by
 #                            --speculative-draft-window-size, not by ctx.
-#   MEM_FRACTION_STATIC      target-model VRAM fraction (default 0.91 — the
-#                            128K-context default: 0.88 lands at a ~98K token
-#                            pool, 0.91 frees ~1 GB more → ~128–131K. Boot
-#                            OOM (headroom < ~1 GB): back off to 0.89.)
+#   MEM_FRACTION_STATIC      target-model VRAM fraction (default 0.90 — the
+#                            live-verified recipe: ~94K-token pool with ~1 GB
+#                            boot headroom). Raise toward 0.91 for a bigger
+#                            pool if you accept tighter boot headroom; boot
+#                            OOM (headroom < ~1 GB): back off to 0.88.)
 #   DFLASH_BLOCK_SIZE        verify window / draft tokens per step (default 8).
 #   DRAFT_WINDOW_SIZE        draft target-token window — the one knob that
-#                            bounds the DFlash2 draft KV pool (default 16384).
+#                            bounds the DFlash2 draft KV pool (default 8192).
 #                            OOM at boot: lower it and/or MEM_FRACTION_STATIC;
 #                            poor accept length on very long prompts: raise it.
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
-CONTEXT_LENGTH="${CONTEXT_LENGTH:-237568}"
-MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.91}"
+MAMBA_RADIX_CACHE_STRATEGY="${MAMBA_RADIX_CACHE_STRATEGY:-extra_buffer_lazy}"
+CONTEXT_LENGTH="${CONTEXT_LENGTH:-80000}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.90}"
 DFLASH_BLOCK_SIZE="${DFLASH_BLOCK_SIZE:-8}"
-DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-16384}"
+DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-8192}"
 # fp8: drafter weights online-quantized at load (3.67 GB -> ~1.8 GB), measured
-# acceptance-identical; the freed ~1.8 GB is what funds DRAFT_WINDOW_SIZE=16384.
+# acceptance-identical; the freed ~1.8 GB is what funds DRAFT_WINDOW_SIZE=8192.
 DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-unquant}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
@@ -138,7 +145,7 @@ start() {
       --attention-backend flashinfer \
       --context-length "$CONTEXT_LENGTH" \
       --chunked-prefill-size 2048 \
-      --mamba-radix-cache-strategy extra_buffer \
+      --mamba-radix-cache-strategy "$MAMBA_RADIX_CACHE_STRATEGY" \
       --mamba-ssm-dtype bfloat16 \
       --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
       --mem-fraction-static "$MEM_FRACTION_STATIC" \

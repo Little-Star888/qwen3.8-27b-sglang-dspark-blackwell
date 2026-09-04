@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-sglang-godspeed.sh — GODSPEED recipe (DSpark alternative): TEXT-ONLY, ~236k ctx.
+# run-sglang-godspeed.sh — GODSPEED recipe (DSpark alternative): TEXT-ONLY.
 # SGLang + NVFP4 (LMHead4) + DSpark drafter + flashinfer SM120 FP4 GEMM on the RTX 5090.
 # This is the DSpark ALTERNATIVE — higher burst ceiling, lower floor than the
 # default DFlash2 recipe (run-sglang-dflash.sh).
@@ -8,7 +8,9 @@
 # Qwen3.8-27B RTX-5090 cell (flashinfer backend, mamba state levers).
 #
 # TEXT-ONLY: --language-only is set, so the vision tower is OFF (frees VRAM for
-# DSpark block-size 7 + the 236k pool). If you want vision, use run-sglang-vision.sh.
+# DSpark block-size 7). NOTE: --context-length 80000 matches the measured KV
+# pool on this 5090 — the real limit is the pool, not the nominal architectural
+# ceiling; see README "Context pool".
 #
 # Usage:
 #   ./run-sglang-godspeed.sh start      # start (idempotent: replaces running container)
@@ -57,6 +59,7 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 #                              (NVFP4 drafter, ~1.4 GB, opt-out: pair with
 #                              DRAFTER_SUBDIR=Qwen3.8-27B-DSpark-NVFP4).
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
+MAMBA_RADIX_CACHE_STRATEGY="${MAMBA_RADIX_CACHE_STRATEGY:-extra_buffer_lazy}"
 MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.88}"
 DSPARK_BLOCK_SIZE="${DSPARK_BLOCK_SIZE:-7}"
 DRAFT_MODEL_QUANTIZATION="${DRAFT_MODEL_QUANTIZATION:-unquant}"
@@ -116,9 +119,9 @@ start() {
       --host 0.0.0.0 --port "$CONTAINER_PORT" \
       --kv-cache-dtype fp8_e4m3 \
       --attention-backend flashinfer \
-      --context-length 237568 \
+      --context-length 80000 \
       --chunked-prefill-size 2048 \
-      --mamba-radix-cache-strategy extra_buffer_lazy \
+      --mamba-radix-cache-strategy "$MAMBA_RADIX_CACHE_STRATEGY" \
       --mamba-ssm-dtype bfloat16 \
       --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
       --mem-fraction-static "$MEM_FRACTION_STATIC" \

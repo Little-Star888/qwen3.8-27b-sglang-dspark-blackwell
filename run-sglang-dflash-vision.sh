@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# run-sglang-dflash-vision.sh — DFLASH2 + VISION (DEFAULT): DFlash2 drafter, vision tower LIVE,
-# ~150k ctx. Same SGLang + NVFP4 (LMHead4) + z-lab DFlash2 stack as
+# run-sglang-dflash-vision.sh — DFLASH2 + VISION (DEFAULT): DFlash2 drafter, vision tower LIVE.
+# Same SGLang + NVFP4 (LMHead4) + z-lab DFlash2 stack as
 # run-sglang-dflash.sh, but the vision tower stays ON (no --language-only) and
 # VRAM is rebalanced so BF16 vision encoder + DFlash2 drafter both fit:
-#   - --context-length 150000    (same as the DSpark vision preset)
+#   - --context-length 80000     (measured KV pool; was 150000 advertised)
 #   - --mem-fraction-static 0.82 (same as the DSpark vision preset)
 #   - --mm-feature-transport cpu (vision ON; avoids WSL2 CUDA-IPC quirk)
 #
 # DFLASH constraints carried over from the text-only DFLASH script:
-#   - --mamba-radix-cache-strategy extra_buffer (NOT extra_buffer_lazy:
-#     the image hard-asserts extra_buffer_lazy unsupported with DFLASH)
+#   - --mamba-radix-cache-strategy extra_buffer_lazy (valid with DFLASH in this
+#     image; measured +5,863-token pool over eager — see README "Context pool")
 #   - the DFlash2 draft pool is bounded by --speculative-draft-window-size
-#     (default 16384), not by ctx — so ctx stays at the DSpark vision value.
+#     (default 8192), not by ctx — see README "Context pool" for why.
 #
 # DSpark launchers are UNTOUCHED. Own drafter knob DFLASH_DRAFTER_SUBDIR
 # (default Qwen3.8-27B-DFlash2); shares CONTAINER_NAME=sglang-qwen38, so it
@@ -45,10 +45,11 @@ DEFAULT_CHAT_TEMPLATE_KWARGS="${DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
 [ -n "$DEFAULT_CHAT_TEMPLATE_KWARGS" ] || DEFAULT_CHAT_TEMPLATE_KWARGS='{"reasoning_effort":"medium"}'
 # DFLASH vision knobs (overridable in .env):
 MAX_MAMBA_CACHE_SIZE="${MAX_MAMBA_CACHE_SIZE:-8}"
-CONTEXT_LENGTH="${CONTEXT_LENGTH:-150000}"
+MAMBA_RADIX_CACHE_STRATEGY="${MAMBA_RADIX_CACHE_STRATEGY:-extra_buffer_lazy}"
+CONTEXT_LENGTH="${CONTEXT_LENGTH:-80000}"
 MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.82}"
 DFLASH_BLOCK_SIZE="${DFLASH_BLOCK_SIZE:-8}"
-DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-16384}"
+DRAFT_WINDOW_SIZE="${DRAFT_WINDOW_SIZE:-8192}"
 
 MODEL_HOST="$DIR/models/$MODEL_SUBDIR"
 DRAFTER_HOST="$DIR/models/$DFLASH_DRAFTER_SUBDIR"
@@ -103,7 +104,7 @@ start() {
       --attention-backend flashinfer \
       --context-length "$CONTEXT_LENGTH" \
       --chunked-prefill-size 2048 \
-      --mamba-radix-cache-strategy extra_buffer \
+      --mamba-radix-cache-strategy "$MAMBA_RADIX_CACHE_STRATEGY" \
       --mamba-ssm-dtype bfloat16 \
       --max-mamba-cache-size "$MAX_MAMBA_CACHE_SIZE" \
       --mem-fraction-static "$MEM_FRACTION_STATIC" \

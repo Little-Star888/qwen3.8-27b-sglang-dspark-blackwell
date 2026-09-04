@@ -29,7 +29,7 @@ That's it. Open `http://localhost:8040/v1` (OpenAI-compatible) or
 | Engine | SGLang (`lmsysorg/sglang:nightly-dev-cu13-20260830-a1fe4e30`, prebuilt, no JIT) |
 | GPU | 1× RTX 5090 (32 GB, sm_120 / Blackwell) |
 | Target speed | default DFlash2: **median 221 tok/s, peak 277** (measured) · ~150–200 tok/s (vision) · DSpark alternative: ~300–323 tok/s burst ceiling, median 126 |
-| Context | ~236k (text-only) / ~150k (vision default) / ~120k (DSpark vision) |
+| Context | `--context-length` 80000 across all presets (matches the measured pool); DFlash2 text-only pool ~91K (mfs 0.90, window 8192, lazy mamba) — see "Context pool" for the per-lever numbers |
 | Ports | API 8040 · gateway 8041 · Grafana 8042 · Prometheus 9091 (all LAN-reachable) |
 
 The speed is the drafter: it proposes a block of tokens the big model
@@ -45,8 +45,8 @@ Grafana dashboard.
 | | |
 |---|---|
 | ⚡ Inference | Prebuilt SGLang image — boots with **no JIT/compile**; NVFP4 weights + FP8 KV cache, Blackwell SM120 FlashInfer FP4 GEMM |
-| 🎲 Speculative decoding | **Default: DFlash2 drafter** proposes a whole block of draft tokens per denoise step; the 27B model **verifies the block in one step** (block 8, draft window 16K). **Alternative: DSpark drafter** proposes autoregressively (block 7 text / 5 vision) |
-| 👁️ Four presets | **dflash** (default, text-only, 236k ctx) ⇄ **dflash-vision** (default, vision ON, 150k ctx) ⇄ **godspeed** (DSpark alt, text-only) ⇄ **vision** (DSpark alt) — swappable on one GPU |
+| 🎲 Speculative decoding | **Default: DFlash2 drafter** proposes a whole block of draft tokens per denoise step; the 27B model **verifies the block in one step** (block 8, draft window 8192). **Alternative: DSpark drafter** proposes autoregressively (block 7 text / 5 vision) |
+| 👁️ Four presets | **dflash** (default, text-only, DFlash2) ⇄ **dflash-vision** (vision ON, DFlash2) ⇄ **godspeed** (DSpark alt, text-only) ⇄ **vision** (DSpark alt) — all `--context-length` 80000, swappable on one GPU |
 | 📊 Grafana | Auto-provisioned dashboard: dense KPI tiles + a live **speculative-decoding win-rate** section (graphs the `spec_accept_*` series either drafter exports). `make_dashboard.py` is the source; the JSON is build output |
 | 📈 Prometheus | 30-day retention, scrapes SGLang + DCGM — the dashboard's own data source (`:9091`, LAN-reachable; a "Prometheus targets" row shows target health) |
 | 🎛️ GPU telemetry | DCGM exporter (util / mem / temp / power) alongside `sglang:` engine metrics; every tile aggregated (`sum()`/`max()`) to a single value |
@@ -139,20 +139,28 @@ The served id is `qwen3.8-27b-nvfp4` (all presets pass
 |---|---|---|---|---|
 | Drafter | DFlash2 z-lab (~3.6 GB BF16) | DFlash2 | DSpark BF16 RadixArk (~2.6 GB) | DSpark BF16 |
 | Image | nightly (DFlash2) | nightly | `qwen38-27b` | `qwen38-27b` |
-| `--context-length` | 237568 | 150000 | 237568 | 120000 |
-| `--mem-fraction-static` | 0.91 | 0.82 | 0.88 | 0.82 |
+| `--context-length` | 80000 | 80000 | 80000 | 80000 |
+| `--mem-fraction-static` | 0.90 | 0.82 | 0.88 | 0.82 |
 | `--max-mamba-cache-size` | 8 | 8 | 8 | 8 |
-| Draft flags | block 8 + draft window 16384 | block 8 + draft window 16384 | block 7 | block 5 |
+| Draft flags | block 8 + draft window 8192 | block 8 + draft window 8192 | block 7 | block 5 |
 | Expected decode | median **221** · peak **277 tok/s** | ~150–200 tok/s | median **126** · peak **~300 tok/s** (323 burst, earlier window) | ~150–200 tok/s |
 | VRAM | ~30.6 GB | ~30 GB | ~30.6 GB | ~30 GB |
 
 Shared flags: `--kv-cache-dtype fp8_e4m3`, `--attention-backend flashinfer`
 (SM120), mamba linear-attention levers (`--mamba-ssm-dtype bfloat16`,
-`--max-mamba-cache-size`), `--max-running-requests 1`. The DFlash2 presets
-pass `--mamba-radix-cache-strategy extra_buffer` (the image hard-asserts
-that `extra_buffer_lazy` is unsupported with DFLASH); the DSpark presets use
-`extra_buffer_lazy`. Sizing and drafter knobs are `.env`-overridable:
+`--max-mamba-cache-size`), `--max-running-requests 1`. Mamba radix-cache
+strategy: **all four presets now pass `--mamba-radix-cache-strategy
+extra_buffer_lazy`** (the DFlash2 presets switched from `extra_buffer` to
+`extra_buffer_lazy` on 2026-09-04 after the A/B measured a +5,863-token pool
+gain at no quality cost; the DSpark presets already used lazy). Override per
+preset with `MAMBA_RADIX_CACHE_STRATEGY` in `.env`. Since the 2026-08-30
+image both strategies are valid with DFLASH — lazy got the DFlash verify
+hook (`DFlashVerifyInput.prepare_for_verify`); the only remaining hard
+assert is lazy + PD-disaggregation. Which to pick is covered in
+"Context pool" below under *Eager vs. lazy mamba buffer*. Sizing and drafter
+knobs are `.env`-overridable:
 `MAX_MAMBA_CACHE_SIZE` (default 8), `MEM_FRACTION_STATIC`,
+`MAMBA_RADIX_CACHE_STRATEGY`,
 `DFLASH_BLOCK_SIZE`, `DRAFT_WINDOW_SIZE` (DFlash2); `DSPARK_BLOCK_SIZE`,
 `DRAFT_MODEL_QUANTIZATION` (DSpark) — see `.env.example`.
 
@@ -229,10 +237,12 @@ single-shot long-context work.
 Two different numbers are both called "context length" and they are not the
 same thing:
 
-- **`--context-length`** (nominal). Set to `237568` (text-only). This is the
-  *architectural* cap — the longest sequence the model can address. It costs
-  almost no VRAM; it's a ceiling, not a budget. A 230K request still has to
-  physically fit in the KV pool below or it OOMs.
+- **`--context-length`** (nominal). Set to `80000` on all presets, matching
+  the measured pool on this 5090. This is a *ceiling*, not a budget: the
+  longest sequence you may *request*. It costs almost no VRAM — but requests
+  must still physically fit in the KV token pool below, and SGLang enforces
+  `max_req_input_len = min(--context-length, pool) − 6`, so the advertised
+  request cap is the smaller of the two.
 - **The KV token pool** (`sglang:max_total_num_tokens`). This is the *physical*
   limit: how many KV cache slots actually exist in VRAM. It is recomputed from
   free VRAM at every container start, and it is the number your real requests
@@ -246,49 +256,86 @@ draft KV pool. The measured relationship is stable across boots:
 measured 32,763–32,772 across every boot this month — the ratio is stable, so
 the table below is a prediction you can check against `/metrics`).
 
-Measured on this box (peak → current → target):
+Measured on this box, 2026-09-04 (same 5090, NVFP4 LMHead4 target model,
+DFlash2 drafter, mfs 0.90, A/B across the two levers). The A/B was measured
+at `--chunked-prefill-size 1024`; the script default (2048) lands ~4K lower
+because a bigger prefill batch holds more in-flight KV:
 
-| Stack | mfs | drafter | KV GB | **token pool** |
+| Recipe | mfs | draft window | mamba strategy | **token pool** |
 |---|---|---|---|---|
-| peak | 0.90 | NVFP4 DSpark | 5.15 | **~169K** |
-| legacy (≤ 08-29) | 0.88 | DFlash2 (draft window 16384) | 3.00 | **~98K** |
-| **default (128K)** | 0.91 | DFlash2 (draft window 16384) | 3.73 | **~122K** (measured 122,069 on 2026-08-30; boot headroom 0.85 GB) |
+| old default (≤ 2026-09-03) | 0.90 | 16384 | eager | **84,750** |
+| draft window halved | 0.90 | 8192 | eager | **89,083** (+4,333) |
+| **current default** | 0.90 | 8192 | **lazy** | **94,946** A/B at prefill 1024; **90,663** at the script's default prefill 2048 — `max_req_input_len` 79,994 in both |
+
+(Boots of the same recipe vary by a few hundred tokens depending on free-VRAM
+rounding; the pool is always read back from `/metrics`, never assumed.)
 
 **Levers, in order of preference** (each frees VRAM → grows the pool;
 verify the real number with `sglang:max_total_num_tokens` after each boot):
 
 | Lever | `.env` knob | Effect |
 |---|---|---|
-| 1. Draft window | `DRAFT_WINDOW_SIZE` | DFlash2's own draft KV pool scales with the window. 16384 → 8192 is the least-disruptive first cut (keeps 16K of draft context — plenty for agent sessions); halving it frees roughly half the draft pool's share of the budget. |
-| 2. Mamba slots | `MAX_MAMBA_CACHE_SIZE` | 8 → 5 frees ~5K of the pool; drop only for single-shot long-ctx work. |
-| 3. Mem fraction | `MEM_FRACTION_STATIC` | Primary pool dial. Higher = bigger pool, less OOM headroom at boot. |
+| 1. Draft window | `DRAFT_WINDOW_SIZE` | DFlash2's own draft KV pool scales with the window. 16384 → 8192 is the least-disruptive first cut (keeps 8K of draft context — plenty for agent sessions); measured **+4,333 tokens** (84,750 → 89,083 on 2026-09-04). |
+| 2. Mamba strategy | `MAMBA_RADIX_CACHE_STRATEGY` | `extra_buffer_lazy` vs `extra_buffer` (eager): lazy drops one mamba-slot buffer pair (5 slots → 4), measured **+5,863 tokens** (89,083 → 94,946) at no quality cost. Default on all presets since 2026-09-04. |
+| 3. Mamba slots | `MAX_MAMBA_CACHE_SIZE` | 8 → 5 frees ~5K of the pool; drop only for single-shot long-ctx work. |
+| 4. Mem fraction | `MEM_FRACTION_STATIC` | Primary pool dial. Higher = bigger pool, less OOM headroom at boot. |
 
-### The 128K default (and how to move it)
+### Eager vs. lazy mamba buffer
 
-The script default since 2026-08-30 is the **128K recipe**: `MEM_FRACTION_STATIC=0.91`
-+ DFlash2 draft window 16384, measured pool **~122K** (122,069 on the
-2026-08-30 boot; boot headroom 0.85 GB — slightly under the ~1 GB comfort
-line, but clean). It fixes the failure
-mode the older 0.88 default had — a ~98K pool OOMs a ~75K-context agent session
-mid-decode once `max_tokens` pushes it past the pool.
+The mamba (linear-attention) radix cache holds per-slot "buffer" pairs that
+the cache allocator reuses across requests. The `--mamba-radix-cache-strategy`
+flag picks the allocation policy:
+
+- **`extra_buffer` (eager)** — reserves two extra buffer pairs per slot
+  up front (a "ping-pong" pair the cache can switch between while one is
+  still being filled). With `MAX_MAMBA_CACHE_SIZE=8` that's 5 buffer slots
+  per mamba state (3 base + 2 eager).
+
+- **`extra_buffer_lazy`** — allocates the extra pair only when actually
+  needed. With `MAX_MAMBA_CACHE_SIZE=8` that's 4 buffer slots (3 base + 1
+  lazy), freeing one buffer pair's VRAM back into the KV pool.
+
+**Measured difference on this box (2026-09-04, mfs 0.90, DFlash2 window
+8192, chunked-prefill 1024):** 89,083 tokens (eager) → **94,946** (lazy),
+a **+5,863-token** gain with no change to `max_req_input_len` (both cap at
+79,994 = `min(80000, pool) − 6`) and no visible quality cost. The gain is
+not from a smaller mamba pool in absolute terms — it's from the allocator
+releasing the eagerly-reserved-but-often-unused buffer pair back into the
+KV pool, which is the dominant memory consumer on this 32 GB card.
+
+All four presets default to `extra_buffer_lazy` since 2026-09-04
+(`MAMBA_RADIX_CACHE_STRATEGY` in `.env` to override per preset). The only
+hard incompatibility is lazy + PD-disaggregation (a hard assert in
+`mamba_hook.py`), which none of these single-node presets use.
+
+### The current default (and how to move it)
+
+The script default since 2026-09-04 is the **~91K recipe**:
+`MEM_FRACTION_STATIC=0.90` + DFlash2 draft window 8192 +
+`MAMBA_RADIX_CACHE_STRATEGY=extra_buffer_lazy`, measured pool **90,663** at
+the script's default `--chunked-prefill-size 2048` (see the table above —
+the A/B was run at prefill 1024, which is why its figures read higher). It is
+what the box actually runs today. The older 0.88/128K recipes are retired (see
+the table above for the A/B history).
 
 ```bash
-# .env overrides (script default is the 128K recipe; only set these to move away)
-MEM_FRACTION_STATIC=0.91       # 128K default; 0.88 → ~98K, 0.89 → OOM-backoff
-DRAFT_WINDOW_SIZE=16384        # extra lever: 8192 shrinks the draft pool (more headroom)
+# .env overrides (the script default IS the recipe above; only set these to move away)
+MEM_FRACTION_STATIC=0.90       # primary pool dial; 0.88 → smaller pool, 0.91 → bigger + tighter boot headroom
+DRAFT_WINDOW_SIZE=8192         # extra lever: 16384 grows the draft pool back (less headroom)
+MAMBA_RADIX_CACHE_STRATEGY=extra_buffer_lazy   # measured +5,863 tokens over eager
 ```
 
 **Verify the real number after every boot** — read
 `sglang:max_total_num_tokens` from `/metrics` (Grafana panel "KV token pool").
-If it lands under 128K, lower `DRAFT_WINDOW_SIZE` (16384 → 8192) or raise mfs;
-if it OOMs at boot (headroom < ~1 GB), back off mfs to 0.89.
+If it lands under ~90K, lower `DRAFT_WINDOW_SIZE` (8192 → 4096) or raise mfs;
+if it OOMs at boot (headroom < ~1 GB), back off mfs to 0.88.
 
 **Companion (client side):** whatever pool you land on, the client's
 `context_length` cap for this endpoint must track it — otherwise the client
-believes the window is 237K and only compresses near ~118K, which is *past*
-where a mid-decode OOM actually happens. In Hermes, set
+believes a window the pool can't back and only compresses *past* where a
+mid-decode OOM actually happens. In Hermes, set
 `custom_providers[].models.qwen3.8-27b-nvfp4.context_length` to the measured
-pool (`128000` for the 128K default, `98000` for the legacy 0.88 setup) in
+pool (`80000` for the current default; keep it ≤ the pool you measure) in
 `~/.hermes/config.yaml`.
 
 ### Swapping the target model (safetensors)
@@ -350,15 +397,15 @@ precision. 19.7 GB checkpoint, ~1 GB heavier than LMHead4.
 documented quality/size trade of the three public NVFP4 builds (the card's
 comparison puts unsloth at −2.0% and Inferact at −3.8%).
 
-**Speed (measured on this box, 2026-09-01, live setup QUASAR + DFlash2,
-window 16384, mfs 0.90, ctx 237,568):**
+**Speed (measured on this box, 2026-09-01, live setup QUASAR + DFlash2):**
 
 - short-context decode: **~260 tok/s peak**
 - long-context request: **~86 tok/s** — the drafter's acceptance collapses
   on long ctx (live `spec_accept_length` ≈ 3.08 vs the ~4.0 median), so this
   is the AR baseline. The drafter, not the target, is the bottleneck there.
-- VRAM: 18.5 GB weights + 3.3 GB KV (108,740 tokens) + 1.4 GB graphs
-  ≈ 31.5/32.6 GB
+- VRAM (then: window 16384, mfs 0.90, ctx 237,568): 18.5 GB weights + 3.3 GB
+  KV (108,740 tokens) + 1.4 GB graphs ≈ 31.5/32.6 GB. On the current
+  09-04 recipe (window 8192, lazy mamba) the pool is the ~91K figure above.
 
 **Switching to it:**
 
@@ -574,8 +621,8 @@ effect in the *next* session.
   models:
     qwen3.8-27b-nvfp4:
       # tracks sglang:max_total_num_tokens from http://127.0.0.1:8040/metrics
-      # (122,069 @ the 128K default, 2026-08-30 boot)
-      context_length: 120000
+      # (90,663 @ the current ~91K recipe, 2026-09-04 boot)
+      context_length: 80000
   models_discovered: true
 ```
 
@@ -587,10 +634,10 @@ Output adds directly to the input against the pool: worst case
 
 - **`context_length` tracks the pool, not the flag.** After every
   server restart, read `sglang:max_total_num_tokens` from `/metrics`
-  and set `context_length` just under it (120000 for the 122K pool;
-  98000 if you're on the legacy 0.88 pool). Too high = compression
-  only fires near ~50% of the *believed* window — past where the pool
-  actually exhausts, which is exactly the OOM symptom above.
+  and set `context_length` just under it (80000 for the current ~91K
+  pool). Too high = compression only fires near the 85%-of-input-budget
+  cap — past where the pool actually exhausts, which is exactly the
+  OOM symptom above.
 - **Edit the YAML directly, not `hermes config set`.** The model id
   `qwen3.8-27b-nvfp4` contains dots, which the CLI's dotted-key
   parser mis-navigates into a garbage nested key the resolver never
@@ -599,11 +646,11 @@ Output adds directly to the input against the pool: worst case
 - **New sessions only.** Config caps apply when a session starts; a
   running session keeps its old value — start a fresh one after
   changing these.
-- **Know when compaction fires.** With `context_length: 120000` and
-  `max_tokens: 16384`, the effective input budget is 103,616 and the
-  default 50% trigger floors at the 64K minimum — so auto-compaction
-  kicks in at ~64K, well inside the 122K pool, and streams no longer
-  die mid-response.
+- **Know when compaction fires.** With `context_length: 80000` and
+  `max_tokens: 16384`, the effective input budget is 63,616 and the
+  trigger (75% small-context floor, capped at 85% of the input budget)
+  fires at ~54,073 tokens — well inside the 90,663 pool, so streams
+  no longer die mid-response.
 
 **Pros / cons of this client-side cap:**
 
@@ -612,12 +659,12 @@ Pros
 - **No OOMs, no restarts.** The cap is pure client state in
   `~/.hermes/config.yaml`; the server stays as-is. An undersized
   request just gets compacted, never aborts.
-- **Headroom math is stable.** 120K input + 16,384 output = 136K
-  worst case, but compaction fires at ~64K, so the realistic request
-  size is ~64K + 16K = ~80K — 35% inside the 122,069 pool.
+- **Headroom math is stable.** 80K input + 16,384 output = 96,384
+  worst case, but compaction fires at ~54K, so the realistic request
+  size is ~54K + 16K = ~70K — comfortably inside the 90,663 pool.
 - **Cheap to undo.** Revert two numbers (or delete the
   `context_length` key entirely) and the next session runs on the
-  model's nominal 237,568 belief again. No server work.
+  model's nominal 80,000 flag again. No server work.
 - **Symmetric with the docs.** The exact keys and the "track the
   pool after every restart" rule live in this README, so a future
   pool change (DFlash window, mfs, drafter) has a documented
@@ -625,11 +672,10 @@ Pros
 
 Cons
 
-- **Compaction runs more often.** At a 120K belief the trigger is
-  ~64K; with the old 237K belief it was ~102K (50% of the 204,800
-  input budget at `max_tokens` 32,768). So long sessions summarize
-  earlier and more frequently, and each summary costs a full pass
-  over the protected tail with the same model (extra tokens +
+- **Compaction runs more often.** At an 80K belief the trigger is
+  ~54K; with the pre-09-04 120K belief it was ~64K. So long sessions
+  summarize earlier and more frequently, and each summary costs a full
+  pass over the protected tail with the same model (extra tokens +
   wall-clock per compaction).
 - **Summaries are lossy.** Everything compressed is reduced to a
   reference-only snapshot; exact text inside compacted turns is
@@ -639,7 +685,7 @@ Cons
 - **16K output ceiling per response.** Very long single responses
   (big code files, long documents) get cut at 16,384 tokens.
   Bumping it back toward 32K eats ~16K of pool headroom — fine for
-  a 122K pool, not for a 98K one.
+  a 122K pool, tight on the current ~91K one.
 - **It's a number you maintain.** The cap only stays correct while
   `sglang:max_total_num_tokens` stays where you think it is. A
   server-side knob change (drafter, `MEM_FRACTION_STATIC`,
@@ -650,20 +696,23 @@ Cons
 ### Setup comparison: no cap vs 98K cap vs 120K cap
 
 All three are the same two YAML values, read off the same formula
-(`trigger = max(50% × (context_length − max_tokens), 64K minimum)`):
+(50% of the effective input budget, floored at the 64K minimum and —
+for sub-512K windows, which is always us — raised to 75% and capped at
+85% of the input budget; see the Hermes `context_compressor.py`
+source for the full derivation):
 
-| | **A: no cap** (legacy) | **B: 98K cap** | **C: 120K cap** (current) |
-|---|---|---|---|
-| `context_length` | 237,568 (nominal flag — pool is *not* this) | 98,000 | 120,000 |
-| `max_tokens` | 32,768 | 16,384 | 16,384 |
-| compaction trigger | **~102K** (50% of 204,800) | **64K** (50% = 40,808 → floored) | **64K** (50% = 51,808 → floored) |
-| realistic max request (trigger + output) | ~135K | ~80K | ~80K |
-| OOMs on the **122K pool** (current 0.91 default)? | **yes** — the 2026-08-30 incident | no, ~42K headroom | no, ~42K headroom |
-| OOMs on a **98K pool** (legacy 0.88)? | **yes** | no, ~18K headroom | no, ~18K headroom (tight) |
-| longest single response | 32,768 tokens | 16,384 | 16,384 |
-| compaction load | lightest (fires at ~102K, ~1×/session for typical work) | heaviest relatively: 64K is **78%** of its 81,616 input budget | 64K is **62%** of its 103,616 budget — same absolute trigger as B, more breathing room before it |
-| extra cost per compaction | — | same (one summary pass over the protected tail, same model) | same as B |
-| maintenance burden | lowest to think about, **highest risk** — client believes a window the pool can't back, until it OOMs | only meaningful while the pool sits at ~98K; on the 122K pool it wastes 24K of unused headroom | tracks the current default pool; **re-verify after every server-side change** (mfs, drafter, draft window) |
+| | **A: no cap** (legacy) | **B: 98K cap** | **C: 120K cap** (pre-09-04) | **D: 80K cap** (current) |
+|---|---|---|---|---|
+| `context_length` | 237,568 (nominal flag) | 98,000 | 120,000 | 80,000 |
+| `max_tokens` | 32,768 | 16,384 | 16,384 | 16,384 |
+| compaction trigger | **~102K** | **~64K** | **~64K** | **~54K** |
+| realistic max request (trigger + output) | ~135K | ~80K | ~80K | ~70K |
+| OOMs on the **~91K pool** (current 09-04 recipe)? | **yes** | no, ~21K headroom | no, ~21K headroom | no, ~21K headroom |
+| OOMs on a **legacy 0.88 pool (~98K)**? | **yes** | no, ~18K headroom | no, ~18K headroom | no, ~28K headroom |
+| longest single response | 32,768 tokens | 16,384 | 16,384 | 16,384 |
+| compaction load | lightest (fires at ~102K) | heaviest: 64K is **86%** of its 74,400 input budget | 64K is **62%** of its 103,616 budget | 54K is **85%** of its 63,616 budget — earliest trigger, but the pool is smallest too |
+| extra cost per compaction | — | same (one summary pass over the protected tail, same model) | same as B | same as B |
+| maintenance burden | lowest to think about, **highest risk** — client believes a window the pool can't back | only meaningful while the pool sits at ~98K | tracks the pre-09-04 122K pool; **re-verify after every server-side change** | **tracks the current ~91K recipe** — re-verify after every server-side change (mfs, drafter, draft window, mamba strategy, chunked-prefill) |
 
 **When to use which:**
 
@@ -671,13 +720,14 @@ All three are the same two YAML values, read off the same formula
   *and* you want 32K-token single responses. Do not run it on the
   DFlash2 defaults.
 - **B** — the safe cap for a **98K pool** (legacy `MEM_FRACTION_STATIC=0.88`).
-  On the current 122K pool it works but needlessly caps sessions 24K
-  early — pick **C** instead.
-- **C** — matches the current 128K default. If you later move the pool
+  On the current ~91K pool it works but needlessly caps sessions ~8K
+  early — pick **D** instead.
+- **C** — matches the pre-09-04 122K pool. If you later move the pool
   (e.g. `DRAFT_WINDOW_SIZE=8192` → ~135K+), bump `context_length` in
-  lockstep; with `max_tokens` 16,384 the trigger un-floors once
-  `context_length` passes ~144K (50% of the input budget crosses the
-  64K minimum), after which it climbs proportionally on its own.
+  lockstep.
+- **D** — the current default since 2026-09-04. Matches the ~91K recipe
+  (window 8192 + lazy mamba + mfs 0.90). If you later move the pool,
+  bump `context_length` in lockstep.
 
 ## Troubleshooting / verify before you trust
 
